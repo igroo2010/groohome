@@ -1,0 +1,6 @@
+{
+  "name": "Korean Spell-Checker & Translator",
+  "description": "An application that corrects Korean spelling and grammar, then translates the corrected text into English using the Gemini API.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
