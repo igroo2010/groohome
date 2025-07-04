@@ -110,61 +110,7 @@ const destinationPrompt = ai.definePrompt({
       popularity: z.string(),
     }),
   },
-  prompt: `The following are the user's biorhythm values, travel tendencies (quiz answers), and the popularity of the recommended destination among all users. Based on this information, generate a recommended destination and the reason for the recommendation.
-
-[Input]
-- Physical: {{{physical}}}
-- Emotional: {{{emotional}}}
-- Intellectual: {{{intellectual}}}
-- Perceptual: {{{perceptual}}}
-- Quiz Answers: {{{quizAnswers}}}
-- Popularity: {{{popularity}}}
-  (이 값은 해당 여행지의 전체 사용자 기준 대중 선호도입니다. 예: 좋아요 1200개, 평점 4.8/5, 전체 1위)
-
-[Output]
-1. personaTitle: (반드시 한글 2단어 조합, 예: "감성 힐링가", "모험 탐험가" 등. 10자 이내, 이모지 금지)
-2. destinationName: (In Korean, city or country)
-3. analysis: 3. analysis: Physical: {{{physical}}},Emotional: {{{emotional}}},Perceptual: {{{perceptual}}},Quiz Answers: {{{quizAnswers}}} 를문석해 사용자의 취향에 맞는 여행지 설명과 사용자에 성향을 5-6문장으로 설명해줘
-4. shortAnalysis: (In Korean, within 20 characters, must be included)
-5. recommendations: For each of accommodation, restaurant, and attraction within destinationName, set name as follows:
-   - If the place is in Korea, use only the official Korean name (no English, no translation, no parentheses).
-   - If the place is outside Korea, use only the official English name (no Korean, no translation, no parentheses).
-   - Do not mix languages, do not use both Korean and English, do not use parentheses or slashes, and do not translate.
-   - Example: "호텔 사보이" (for Korea), "Hotel Savoy" (for outside Korea)
-   Each item should include type (one of '숙소', '맛집', '명소'), name, description (Korean, within 30 characters), address (actual address, within 50 characters), and preferenceScore (a float between 0 and 1, where higher means more strongly recommended for the user. Calculate this based on how well the place matches the user's biorhythm and quiz answers. Example: 0.92).
-6. budget: 반드시 한국어로, 각 항목(숙박, 식비, 액티비티, 교통비, 기타 등)은 한 줄씩 줄바꿈해서 작성. 
-모든 금액은 반드시 '원' 단위(예: 50,000원)로만 표기하고, 외화(엔, 달러, 유로 등)는 절대 사용하지 말 것.
-각 항목별 금액은 현실적인 범위(예: 숙박 80,000~300,000원, 식비 20,000~100,000원, 액티비티 10,000~100,000원 등)에서 랜덤하게 생성하고, 
-항목별로 금액이 너무 비슷하지 않게 충분한 차이를 두어 다양하게 표기할 것.
-기타 항목은 반드시 '기념품, 소소한 간식, 현지 교통비 등 실제 여행에서 발생할 수 있는 추가 비용'만 포함할 것. 기타 항목에 불필요한 설명, 이상한 항목, 설명문, AI 안내문 등은 절대 넣지 말 것. 예시: 기타: 10,000원 (예: 기념품, 간식, 현지 교통비 등)
-마지막 줄에 '총 1박 기준: 총액(원)' 형태로 합산 금액을 표기할 것.
-7. transport: 반드시 한국어로, '비행', '시내' 각각 한 줄씩 줄바꿈해서 작성.
-8. tip: 반드시 한국어로, 각 항목별로 줄바꿈해서 3–4가지 이상, 각 팁은 20–50자 이내의 구체적이고 실질적인 문장으로 안내. 예시: '자외선이 강하니 SPF50 이상의 선크림을 꼭 챙기세요.'
-9. imagePrompt: In English, provide a highly artistic, emotional, and visually stunning photo of the recommended destination, as if taken by a professional local photographer. The image should be high-resolution, realistic, and capture the unique atmosphere and beauty of the place. Avoid illustrations or cartoons. Use a cinematic, travel magazine style. No people, no text, no watermark, no logo, no cartoon, no illustration, no drawing, no painting, no animation, no emoji.
-+모든 설명, 분석, 추천 결과(analysis, shortAnalysis, recommendations.description 등)는 반드시 한국어로 작성할 것. 영어로 작성하지 말 것. 영어가 포함되면 반드시 한국어로만 다시 작성할 것.
-+ 반드시 실제 존재하는 명소, 거리, 건물, 랜드마크 등 구체적 장소가 포함되어야 하며, 사람들이 실제로 가보고 싶다고 느낄만한 현실적인 장소로 묘사할 것. 자연 풍경만 묘사하지 말고, 구체적 위치(예: 에펠탑, 도쿄 시부야 거리, 뉴욕 타임스퀘어 등)가 반드시 드러나야 함.
-10. popularity: (이 여행지의 대중 선호도. 예: 좋아요 1200개, 평점 4.8/5, 전체 1위)
-
-Return in the JSON format as shown below. The shortAnalysis field must be included.
-
-Example JSON:
-{
-  "personaTitle": "감성 힐링가",
-  "destinationName": "파리",
-  ...
-  "recommendations": [
-    {
-      "type": "숙소",
-      "name": "호텔 사보이",
-      "description": "도심에 위치한 고급 호텔",
-      "address": "서울 중구 동호로 249",
-      "preferenceScore": 0.92
-    },
-    ...
-  ],
-  "popularity": "좋아요 1200개, 평점 4.8/5, 전체 1위"
-}
-Be sure to include all fields as in the example above, and for each item in recommendations, only include type, name, description, address, and preferenceScore. The shortAnalysis field must be included.`,
+  prompt: `[퀴즈 문항 예시]\n- \"여행에서 가장 중요하게 생각하는 가치는?\" → \"완전한 휴식과 스트레스 해소\"\n- \"이상적인 여행 기간은?\" → \"일주일 정도의 여유로운 여행\"\n- \"가장 마음이 편안해지는 자연환경은?\" → \"파도 소리가 들리는 해변\"\n- \"신체 활동 강도에 대한 선호는?\" → \"적당한 운동량의 가벼운 활동\"\n- \"평소 휴일을 보내는 방식은?\" → \"집에서 푹 쉬며 재충전\"\n\n[지침]\n- 퀴즈 답변의 조합에 따라 여행지 추천 결과가 다양하게 나오도록 할 것\n- 퀴즈 답변을 주로 참고하되, 필요시 바이오리듬 등 다른 입력값도 참고할 것\n- 추천지는 반드시 실제 존재하는 도시/국가명으로, 답변과 논리적으로 연결될 것\n\n[중요] 아래 입력값(Physical, Emotional, Intellectual, Perceptual, Quiz Answers, Popularity 등) 모든 정보를 반드시 최대한 꼼꼼하게 참조하여, 각 항목(여행지, 분석, 추천 장소, 예산, 교통, 팁 등)을 논리적으로 생성할 것. 입력값을 무시하거나 임의로 결과를 생성하지 말고, 반드시 입력값을 근거로 결과를 도출할 것.\n\nThe following are the user's biorhythm values, travel tendencies (quiz answers), and the popularity of the recommended destination among all users. Based on this information, generate a recommended destination and the reason for the recommendation.\n\n[Input]\n- Physical: {{{physical}}}\n- Emotional: {{{emotional}}}\n- Intellectual: {{{intellectual}}}\n- Perceptual: {{{perceptual}}}\n- Quiz Answers: {{{quizAnswers}}}\n- Popularity: {{{popularity}}}\n  (이 값은 해당 여행지의 전체 사용자 기준 대중 선호도입니다. 예: 좋아요 1200개, 평점 4.8/5, 전체 1위)\n\n[Output]\n1. personaTitle: (반드시 한글 2단어 조합, 예: \"감성 힐링가\", \"모험 탐험가\" 등. 10자 이내, 이모지 금지)\n2. destinationName: (반드시 퀴즈 답변만을 근거로 사용자의 여행 성향에 가장 적합한 실제 존재하는 도시 또는 국가명을 한글로 추천할 것. 바이오리듬 수치는 참고하지 말 것. 단순히 임의로 정하지 말고, 입력된 퀴즈 답변에 논리적으로 어울리는 여행지를 선정할 것. 영어, 번역, 괄호, 설명문, 이모지 등은 절대 포함하지 말 것.)\n3. analysis: 바이오리듬 수치와 퀴즈 답변을 참고하되, 수치(숫자), 영어 단어(Physical, Emotional 등), 기호, 괄호, 콜론 등은 절대 노출하지 말고, 오직 자연스러운 한글 설명만으로 사용자의 여행 성향과 추천 이유를 5-6문장으로 작성해줘. 특히 퀴즈 답변을 바탕으로 사용자의 여행 취향, 가치관, 활동 선호, 성격적 특성 등도 함께 분석해서 구체적으로 서술할 것. 수치, 영어, 기호, 괄호 등이 포함되면 반드시 한글 자연어로만 다시 작성할 것.\n4. shortAnalysis: (In Korean, within 20 characters, must be included)\n5. recommendations: 반드시 destinationName(추천된 도시/국가) 내에 실제로 존재하는 숙소, 맛집, 명소만 추천할 것. 다른 지역의 장소, 가상의 장소, 번역된 이름, 설명문, 이모지 등은 절대 포함하지 말 것. For each of accommodation, restaurant, and attraction within destinationName, set name as follows:\n   - If the place is in Korea, use only the official Korean name (no English, no translation, no parentheses).\n   - If the place is outside Korea, use only the official English name (no Korean, no translation, no parentheses).\n   - Do not mix languages, do not use both Korean and English, do not use parentheses or slashes, and do not translate.\n   - Example: \"호텔 사보이\" (for Korea), \"Hotel Savoy\" (for outside Korea)\n   Each item should include type (one of '숙소', '맛집', '명소'), name, description (Korean, within 30 characters), address (actual address, within 50 characters), and preferenceScore (a float between 0 and 1, where higher means more strongly recommended for the user. Example: 0.92).\n6. budget: 반드시 destinationName(추천된 도시/국가) 기준의 실제 물가와 여행 경비를 현실적으로 반영해서 작성할 것. 각 항목(숙박, 식비, 액티비티, 교통비, 기타 등)은 한 줄씩 줄바꿈해서 작성. \n모든 금액은 반드시 '원' 단위(예: 50,000원)로만 표기하고, 외화(엔, 달러, 유로 등)는 절대 사용하지 말 것.\n각 항목별 금액은 현실적인 범위(예: 숙박 80,000~300,000원, 식비 20,000~100,000원, 액티비티 10,000~100,000원 등)에서 랜덤하게 생성하고, \n항목별로 금액이 너무 비슷하지 않게 충분한 차이를 두어 다양하게 표기할 것.\n기타 항목은 반드시 '기념품, 소소한 간식, 현지 교통비 등 실제 여행에서 발생할 수 있는 추가 비용'만 포함할 것. 기타 항목에 불필요한 설명, 이상한 항목, 설명문, AI 안내문 등은 절대 넣지 말 것. 예시: 기타: 10,000원 (예: 기념품, 간식, 현지 교통비 등)\n마지막 줄에 '총 1박 기준: 총액(원)' 형태로 합산 금액을 표기할 것.\n7. transport: 반드시 destinationName(추천된 도시/국가) 기준의 실제 교통수단, 소요시간, 가격 등만 포함할 것. 반드시 한국어로, '비행', '시내' 각각 한 줄씩 줄바꿈해서 작성.\n8. tip: 반드시 destinationName(추천된 도시/국가)에서 실제로 유용한 여행 팁만 포함할 것. 반드시 한국어로, 각 항목별로 줄바꿈해서 3–4가지 이상, 각 팁은 20–50자 이내의 구체적이고 실질적인 문장으로 안내. 예시: '자외선이 강하니 SPF50 이상의 선크림을 꼭 챙기세요.'\n9. imagePrompt: In English, provide a highly artistic, emotional, and visually stunning photo of the recommended destination, as if taken by a professional local photographer. The image should be high-resolution, realistic, and capture the unique atmosphere and beauty of the place. Avoid illustrations or cartoons. Use a cinematic, travel magazine style. No people, no text, no watermark, no logo, no cartoon, no illustration, no drawing, no painting, no animation, no emoji.\n+모든 설명, 분석, 추천 결과(analysis, shortAnalysis, recommendations.description 등)는 반드시 한국어로 작성할 것. 영어로 작성하지 말 것. 영어가 포함되면 반드시 한국어로만 다시 작성할 것.\n+ 반드시 실제 존재하는 명소, 거리, 건물, 랜드마크 등 구체적 장소가 포함되어야 하며, 사람들이 실제로 가보고 싶다고 느낄만한 현실적인 장소로 묘사할 것. 자연 풍경만 묘사하지 말고, 구체적 위치(예: 에펠탑, 도쿄 시부야 거리, 뉴욕 타임스퀘어 등)가 반드시 드러나야 함.\n10. popularity: (이 여행지의 대중 선호도. 예: 좋아요 1200개, 평점 4.8/5, 전체 1위)\n\nReturn in the JSON format as shown below. The shortAnalysis field must be included.\n\nExample JSON:\n{\n  \"personaTitle\": \"감성 힐링가\",\n  \"destinationName\": \"파리\",\n  ...\n  \"recommendations\": [\n    {\n      \"type\": \"숙소\",\n      \"name\": \"호텔 사보이\",\n      \"description\": \"도심에 위치한 고급 호텔\",\n      \"address\": \"서울 중구 동호로 249\",\n      \"preferenceScore\": 0.92\n    },\n    ...\n  ],\n  \"popularity\": \"좋아요 1200개, 평점 4.8/5, 전체 1위\"\n}\nBe sure to include all fields as in the example above, and for each item in recommendations, only include type, name, description, address, and preferenceScore. The shortAnalysis field must be included.`,
 });
 
 
@@ -197,8 +143,12 @@ const recommendDestinationFlow = ai.defineFlow(
           popularity: '',
         },
         {
-          model: text_model, // model만 최상위에 전달
-          config: { apiKey: text_model_apikey },
+          model: text_model,
+          config: {
+            apiKey: text_model_apikey,
+            temperature: 1.3,   // 다양성 증가
+            top_p: 0.95         // 다양성 증가
+          },
         }
       );
       destinationDetails = output;

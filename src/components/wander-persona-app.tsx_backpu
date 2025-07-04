@@ -293,10 +293,10 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
       if (res.ok && Array.isArray(data.questions)) {
         setQuestions(data.questions);
       } else {
-        setQuestions(getShuffledQuestions());
+        setQuestions(getShuffledQuestions(10));
       }
     } catch (e) {
-      setQuestions(getShuffledQuestions());
+      setQuestions(getShuffledQuestions(10));
     }
   };
 
@@ -484,16 +484,13 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
   };
 
   // handleResetOrMyResult: 다시하기/내 결과로 전환
-  const handleResetOrMyResult = async () => {
-    setAnswers([]);
-    setCurrentStep(0);
-    await fetchQuizQuestions();
-    setStage('quiz');
+  const handleResetOrMyResult = () => {
     setView('main');
     setResultData(null);
     setCurrentSessionId(null);
     setIsLoadingResult(false);
-    // birthDate, recommendedDestination, email 등은 그대로 유지
+    setStage('intro');
+    setRecommendedDestination(null);
   };
 
   // 이미지 로딩 핸들러 복원

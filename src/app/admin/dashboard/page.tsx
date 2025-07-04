@@ -105,10 +105,19 @@ export default function AdminDashboard() {
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    console.log('handleUpload 실행');
+    if (!selectedFile) {
+      console.log('선택된 파일 없음');
+      return;
+    }
     setUploading(true);
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
+
+    const { data: { user } } = await supabase.auth.getUser();
+  //console.log('user 전체:', user);
+  //console.log('업로드 시도 userId:', user?.id);
+
     const formData = new FormData();
     formData.append('file', selectedFile);
     const response = await fetch('/api/upload-image', {
@@ -126,7 +135,7 @@ export default function AdminDashboard() {
       setImageUrl(`${data.imageUrl}?t=${Date.now()}`);
       setSelectedFile(null);
     } else {
-      alert('업로드 실패: ' + (data.error || '서버 오류, 콘솔/관리자에게 문의하세요.'));
+     //alert('업로드 실패: ' + (data.error || '서버 오류, 콘솔/관리자에게 문의하세요.'));
       console.error('이미지 업로드 실패:', data.error);
     }
     setUploading(false);

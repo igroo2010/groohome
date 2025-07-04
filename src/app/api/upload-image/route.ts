@@ -8,37 +8,29 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!  // 다시 NEXT_PUBLIC_ 사용
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(req: NextRequest) {
-  // 1. 인증 체크 (선택사항)
+  // 1. 인증 필수
   const authHeader = req.headers.get('authorization');
-  let userId = 'anonymous'; // 기본값
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const accessToken = authHeader.replace('Bearer ', '');
-    const { data: { user }, error } = await supabase.auth.getUser(accessToken);
-    
-    if (user && !error) {
-      userId = user.id; // 인증 성공시에만 실제 userId 사용
-    } else {
-      // 인증 실패시 처리
-      console.log('Authentication failed:', error?.message || 'Invalid token');
-      return NextResponse.json({ 
-        error: '인증에 실패했습니다. 유효하지 않은 토큰입니다.',
-        code: 'AUTH_FAILED',
-        authenticated: false
-      }, { status: 401 });
-    }
-  } else if (authHeader) {
-    // Bearer 토큰 형식이 잘못된 경우
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return NextResponse.json({ 
-      error: '잘못된 인증 헤더 형식입니다. Bearer 토큰을 사용해주세요.',
-      code: 'INVALID_AUTH_FORMAT',
+      error: '인증 토큰이 필요합니다. Bearer 토큰을 포함해 주세요.',
+      code: 'NO_AUTH',
       authenticated: false
-    }, { status: 400 });
+    }, { status: 401 });
   }
+  const accessToken = authHeader.replace('Bearer ', '');
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (!user || error) {
+    return NextResponse.json({ 
+      error: '인증에 실패했습니다. 유효하지 않은 토큰입니다.',
+      code: 'AUTH_FAILED',
+      authenticated: false
+    }, { status: 401 });
+  }
+  const userId = user.id;
 
   const formData = await req.formData();
   let file = formData.get('file') as File | null;
@@ -63,13 +55,13 @@ export async function POST(req: NextRequest) {
   //console.log('filePath:', filePath);
   //console.log('file:', file);
 
-  const { data, error } = await supabase.storage
+  const { data, error: uploadError } = await supabase.storage
     .from('travel-images')
     .upload(filePath, file, { upsert: true });
 
-  if (error) {
-    console.error('Supabase Storage Upload Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (uploadError) {
+    console.error('Supabase Storage Upload Error:', uploadError);
+    return NextResponse.json({ error: uploadError.message }, { status: 500 });
   }
 
   // public URL 반환

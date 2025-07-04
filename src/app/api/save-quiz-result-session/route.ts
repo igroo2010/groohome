@@ -35,6 +35,7 @@ async function uploadExternalImageToStorage(imageUrl: string, fileName: string) 
 const detectCity = async (ip: string): Promise<string> => {
   const response = await fetch(`https://ipapi.co/${ip}/json/`);
   const data: any = await response.json();
+  console.log('ipapi.co 응답:', data); // ← 이 줄 추가
   let region = data.region || '';
   let city = data.city || '';
   //console.log('detectCity region:', region, 'city:', city); // region, city 콘솔 출력
@@ -100,10 +101,10 @@ const detectCity = async (ip: string): Promise<string> => {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    let { email, birth_date, quiz_answers, ai_result, image_url, ip } = body;
-    let location = 'local';
+    let { email, birth_date, quiz_answers, ai_result, image_url, ip, location: clientLocation } = body;
+    let location = clientLocation || 'local';
     console.log('받은 ip:', ip);
-    if (ip && ip !== 'unknown' && ip !== '::1' && ip !== '127.0.0.1') {
+    if (!clientLocation && ip && ip !== 'unknown' && ip !== '::1' && ip !== '127.0.0.1') {
       try {
         const locationResult = await detectCity(ip); // 지역 전체 문자열 반환
         location = locationResult || 'local';

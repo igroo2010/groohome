@@ -43,20 +43,23 @@ export default function ResultDetail({ id }: { id: string }) {
       ) : !data ? (
         <div>데이터 없음</div>
       ) : (
-        <ResultCard
-          persona={{
-            personaName: data.ai_result?.personaTitle || '',
-            description: data.ai_result?.analysis || '',
-            destination: data.recommended_destination || '',
-            imageUrl: data.image_url || '',
-            recommendations: data.ai_result?.recommendations || [],
-            budget: data.ai_result?.budget || '',
-            transport: data.ai_result?.transport || '',
-            tip: data.ai_result?.tip || '',
-            likes: data.likes || 0,
-          }}
-          onReset={() => window.history.back()}
-        />
+            <ResultCard
+              persona={{
+                personaName: data.ai_result?.personaTitle || '',
+                description: data.ai_result?.analysis || '',
+                destination: data.recommended_destination || '',
+                imageUrl: data.image_url || '',
+                recommendations: data.ai_result?.recommendations || [],
+                budget: data.ai_result?.budget || '',
+                transport: data.ai_result?.transport || '',
+                tip: data.ai_result?.tip || '',
+                likes: data.likes || 0,
+                id: data.id || '',
+                email: data.email || '',
+                birth_date: data.birth_date || '',
+              }}
+              onReset={() => window.history.back()}
+            />
       )}
     </motion.div>
   );

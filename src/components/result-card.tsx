@@ -14,7 +14,7 @@ import {
   TrainFront,
   Lightbulb,
 } from 'lucide-react';
-import type { RecommendDestinationOutput } from '@/ai/flows/recommend-destination';
+// import type { RecommendDestinationOutput } from '@/ai/flows/recommend-destination'; // 사용하지 않으므로 삭제
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -285,30 +285,6 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
       ],
     });
   };
-
-  const recommendations = [
-    {
-      id: 'accommodation',
-      type: '추천 숙소',
-      name: '서울 신라호텔',
-      address: '서울 중구 동호로 249',
-      icon: <Home className="w-4 h-4 text-accent shrink-0" />,
-    },
-    {
-      id: 'restaurant',
-      type: '추천 맛집',
-      name: '밍글스',
-      address: '서울 강남구 도산대로67길 19',
-      icon: <Utensils className="w-4 h-4 text-accent shrink-0" />,
-    },
-    {
-      id: 'tourist_spot',
-      type: '추천 명소',
-      name: '경복궁',
-      address: '서울 종로구 사직로 161',
-      icon: <Landmark className="w-4 h-4 text-accent shrink-0" />,
-    },
-  ];
 
   return (
     <Card className="w-full max-w-xl mx-auto shadow-2xl overflow-hidden border-2 border-primary/20 min-h-[600px]">

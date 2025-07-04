@@ -11,16 +11,17 @@ type BiorhythmChartProps = {
 };
 
 export function BiorhythmChart({ birthDate }: BiorhythmChartProps) {
+  console.log('[BiorhythmChart] 호출됨, birthDate:', birthDate, typeof birthDate, birthDate instanceof Date);
   const chartData = React.useMemo(() => {
-    if (!birthDate) return [];
-    
+    if (!birthDate) {
+     //console.log('[BiorhythmChart] birthDate falsy:', birthDate);
+      return [];
+    }
     const today = new Date();
     const data = [];
-    
     for (let i = -14; i <= 14; i++) {
       const date = addDays(today, i);
       const rhythms = calculateBiorhythm(birthDate, date);
-      
       data.push({
         date: format(date, 'MM/dd'),
         '신체': rhythms.physical,
@@ -29,6 +30,7 @@ export function BiorhythmChart({ birthDate }: BiorhythmChartProps) {
         '지각': rhythms.perceptual,
       });
     }
+  //console.log('[BiorhythmChart] chartData:', data);
     return data;
   }, [birthDate]);
 
