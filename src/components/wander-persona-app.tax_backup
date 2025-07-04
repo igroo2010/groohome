@@ -1,0 +1,756 @@
+'use client';
+
+import React, { useState, useTransition, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import Image from 'next/image';
+import { format, isValid, parse } from 'date-fns';
+import { Wand2, Repeat, Calendar as CalendarIcon, Mail } from 'lucide-react';
+import { getRecommendedDestination } from '@/app/actions';
+import type { RecommendDestinationOutput } from '@/ai/flows/recommend-destination';
+import { Quiz } from '@/components/quiz';
+import { getShuffledQuestions, type Question, allQuizQuestions } from '@/components/quiz-questions';
+import { ResultCard } from '@/components/result-card';
+import { LoadingSpinner } from '@/components/loading-spinner';
+import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useToast } from '@/hooks/use-toast';
+import { Input } from '@/components/ui/input';
+import { BiorhythmDisplay } from '@/components/biorhythm-display';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { motion, AnimatePresence } from 'framer-motion';
+import { usePathname } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import { calculateBiorhythm } from '@/lib/biorhythm';
+import { fetchAdminSettings } from '@/lib/fetchAdminSettings';
+import RecommendList from './result/RecommendList';
+
+type Stage = 'intro' | 'biorhythm' | 'quiz' | 'email' | 'loading_persona' | 'result';
+
+// 1. 생년월일 입력 컴포넌트: 사용자가 생년월일을 입력하는 UI
+function BirthDateInput({ value, onChange, onNext, error, isPending, onDateSelect }: { value: string, onChange: (v: string) => void, onNext: () => void, error: string | null, isPending: boolean, onDateSelect: (date: Date | undefined) => void }) {
+  // 하이픈 자동 입력 핸들러
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let v = e.target.value.replace(/[^\d]/g, '');
+    if (v.length > 8) v = v.slice(0, 8);
+    if (v.length > 4 && v.length <= 6) {
+      v = v.slice(0, 4) + '-' + v.slice(4);
+    } else if (v.length > 6) {
+      v = v.slice(0, 4) + '-' + v.slice(4, 6) + '-' + v.slice(6);
+    }
+    onChange(v);
+  };
+  return (
+    <div className="text-center w-full">
+      <h1 className="text-2xl md:text-3xl font-black font-headline">
+        여행 페르소나
+      </h1>
+      <div className="w-full h-[1px] bg-gray-200 my-3" />
+      <p className="mt-4 text-lg md:text-xm text-muted-foreground max-w-xl mx-auto">
+        당신만의 특별한 여행 찾아보세요.
+      </p>
+      <div className="mt-8 flex flex-col items-center gap-2 w-full">
+        <div className="flex w-full max-w-sm mx-auto items-center gap-2">
+          <Input
+            placeholder="YYYY-MM-DD"
+            value={value}
+            onChange={handleInput}
+            disabled={isPending}
+            maxLength={10}
+          />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant={"outline"} size="icon" className="shrink-0">
+                <CalendarIcon className="h-4 w-4" />
+                <span className="sr-only">달력에서 날짜 선택</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar
+                mode="single"
+                selected={value ? new Date(value) : undefined}
+                onSelect={onDateSelect}
+                captionLayout="dropdown-buttons"
+                fromYear={1930}
+                toYear={new Date().getFullYear()}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
+        <Button onClick={onNext} size="lg" className="rounded-full px-10 py-6 text-lg w-full max-w-sm mt-4" disabled={!value || !!error || isPending}>
+          <Wand2 className="mr-3 h-6 w-6" />
+          내 페르소나 찾기
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// 2. 바이오리듬 분석 컴포넌트: BiorhythmDisplay를 사용해 바이오리듬 차트와 해석을 보여줌
+// 3. 퀴즈 컴포넌트: 여행 성향 파악을 위한 퀴즈 UI
+// 4. 이메일 입력 컴포넌트: 결과를 받을 이메일과 개인정보 동의 체크 UI
+function EmailInput({ value, onChange, privacyChecked, onPrivacyChange, onNext, isPending }: { value: string, onChange: (v: string) => void, privacyChecked: boolean, onPrivacyChange: (v: boolean) => void, onNext: () => void, isPending: boolean }) {
+  return (
+    <>
+      <Input
+        type="email"
+        placeholder="your.email@example.com"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="max-w-sm"
+        disabled={isPending}
+      />
+      <div className="flex items-center space-x-2">
+        <Checkbox id="privacy" checked={privacyChecked} onCheckedChange={(checked: boolean) => onPrivacyChange(checked)} disabled={isPending} />
+        <Label htmlFor="privacy" className="text-sm font-normal text-muted-foreground">
+          개인정보처리방침에 동의합니다.
+        </Label>
+      </div>
+      <Button onClick={onNext} size="lg" className="rounded-full px-10 py-6 text-lg w-full max-w-sm mt-2" disabled={!value || !privacyChecked || isPending}>
+        <Mail className="mr-3 h-6 w-6" />
+        결과 확인하기
+      </Button>
+    </>
+  );
+}
+
+// 5. 결과 컴포넌트: AI가 분석한 여행 페르소나/추천지 결과를 보여줌
+
+// WanderPersonaApp: 전체 페르소나 생성 플로우를 관리하는 메인 컴포넌트
+export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: string }) {
+  // ====== 상태 관리 ======
+  // 각 단계(stage), 퀴즈 답변, 입력값, 결과 등 상태 관리
+  const [stage, setStage] = useState<Stage>('intro');
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [birthDate, setBirthDate] = useState<string>('');
+  const [dateError, setDateError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [privacyChecked, setPrivacyChecked] = useState(false);
+  const [persona, setPersona] = useState<RecommendDestinationOutput | null>(null);
+  const [recommendedDestination, setRecommendedDestination] = useState<RecommendDestinationOutput | null>(null);
+  const [isBiorhythmLoading, setIsBiorhythmLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const { toast } = useToast();
+  const [adminImageUrl, setAdminImageUrl] = useState<string | null>(null);
+  const [adminTitle, setAdminTitle] = useState<string | null>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgLoadStarted, setImgLoadStarted] = useState(false);
+  const imgLoadTimer = useRef<NodeJS.Timeout | null>(null);
+  const [mySessionId, setMySessionId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [resultData, setResultData] = useState<any>(null);
+  const [recommendList, setRecommendList] = useState<any[]>([]);
+  const [view, setView] = useState<'main' | 'result'>('main');
+  const [isLoadingResult, setIsLoadingResult] = useState(false);
+  const [imgNaturalWidth, setImgNaturalWidth] = useState<number | null>(null);
+  const [imgNaturalHeight, setImgNaturalHeight] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showAIResult, setShowAIResult] = useState(false);
+  const [cardWidth, setCardWidth] = useState(stage === 'biorhythm' && (isBiorhythmLoading || !showAIResult) ? 360 : 650);
+  const [showBiorhythmContent, setShowBiorhythmContent] = useState(false);
+
+  // ====== 핸들러 함수들 ======
+  // handleReset: 전체 상태 초기화
+  const handleReset = useCallback(() => {
+    setAnswers([]);
+    setCurrentStep(0);
+    setQuestions([]);
+    setPersona(null);
+    setBirthDate('');
+    setDateError(null);
+    setEmail('');
+    setPrivacyChecked(false);
+    setRecommendedDestination(null);
+    setIsBiorhythmLoading(false);
+    setStage('intro');
+    setIsLoadingResult(false);
+    setResultData(null);
+    setCurrentSessionId(null);
+  }, []);
+
+  // fetchQuizQuestions: 바이오리듬 분석 진입 시 퀴즈 질문 미리 받아오기
+  const fetchQuizQuestions = async () => {
+    try {
+      const adminSettings = await fetchAdminSettings();
+      const res = await fetch('/api/generate-quiz-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: adminSettings.text_model,
+          apiKey: adminSettings.text_model_apikey,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.questions)) {
+        setQuestions(data.questions);
+      } else {
+        setQuestions(getShuffledQuestions(10));
+      }
+    } catch (e) {
+      setQuestions(getShuffledQuestions(10));
+    }
+  };
+
+  // handleShowBiorhythm: 바이오리듬 분석 단계로 이동
+  const handleShowBiorhythm = () => {
+    if (birthDate && !dateError) {
+      setStage('biorhythm');
+    }
+  };
+
+  // handleStartQuiz: 퀴즈 시작
+  const handleStartQuiz = async () => {
+    await fetchQuizQuestions(); // 퀴즈 시작 전에 항상 새로 불러오기
+    setCurrentStep(0);         // 인덱스도 0으로 초기화
+    setStage('quiz');
+  };
+
+  // handleAnswer: 퀴즈 답변 처리
+  const handleAnswer = (answer: string) => {
+    const newAnswers = [...answers, answer];
+    setAnswers(newAnswers);
+    if (currentStep < questions.length - 1) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      setStage('email');
+    }
+  };
+
+  // handleEmailSubmit: 이메일 입력 후 결과 생성 및 저장
+  const handleEmailSubmit = () => {
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      toast({
+        title: '오류',
+        description: '올바른 이메일 주소를 입력해주세요.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!privacyChecked) {
+      toast({
+        title: '오류',
+        description: '개인정보처리방침에 동의해주세요.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setStage('loading_persona');
+    startTransition(async () => {
+      if (!birthDate) {
+        toast({
+          title: '오류',
+          description: '생년월일 정보가 없습니다. 다시 시작해 주세요.',
+          variant: 'destructive',
+        });
+        handleReset();
+        return;
+      }
+      try {
+        // AI 연동: 사용자의 퀴즈 답변과 바이오리듬을 기반으로 여행 페르소나/여행지 결과를 AI에게 요청합니다.
+        const birth = new Date(birthDate);
+        const today = new Date();
+        const biorhythm = calculateBiorhythm(birth, today);
+        const result = await getRecommendedDestination({
+          birthDate: birthDate,
+          quizAnswers: answers,
+          physical: biorhythm.physical,
+          emotional: biorhythm.emotional,
+          intellectual: biorhythm.intellectual,
+          perceptual: biorhythm.perceptual,
+        });
+        console.log('[AI 결과]', result);
+        setRecommendedDestination(result);
+        // DB 저장: ai_result는 꼭 필요한 값만 추려서 저장
+        const aiResultToSave = {
+          personaTitle: result.personaTitle || '',
+          analysis: result.analysis || '',
+          budget: result.budget || '정보 없음',
+          transport: result.transport || '정보 없음',
+          tip: result.tip || '정보 없음',
+          recommendations: result.recommendations || [],
+          imageUrl: result.imageUrl || '',
+          destinationName: result.destinationName || '',
+        };
+        const saveRes = await fetch('/api/save-quiz-result-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            birth_date: birthDate,
+            quiz_answers: answers,
+            ai_result: aiResultToSave,
+            image_url: result.imageUrl,
+          }),
+        });
+        if (!saveRes.ok) {
+          throw new Error('DB 저장 실패');
+        }
+        const saveData: any = await saveRes.json();
+        console.log('[DB 저장 결과]', saveData);
+        // DB에 저장된 publicUrl로 recommendedDestination의 imageUrl 갱신 (prev null 체크)
+        setRecommendedDestination(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            imageUrl: saveData.image_url || prev.imageUrl || '',
+            personaTitle: prev.personaTitle || '',
+            destinationName: prev.destinationName || '',
+            analysis: prev.analysis || '',
+            shortAnalysis: prev.shortAnalysis || '',
+            recommendations: prev.recommendations || [],
+            budget: prev.budget || '',
+            transport: prev.transport || '',
+            tip: prev.tip || '',
+          };
+        });
+        handleResultSave(saveData.sessionId, {
+          ...result,
+          imageUrl: saveData.image_url || result.imageUrl || '',
+          ai_result: {
+            ...result,
+            imageUrl: saveData.image_url || result.imageUrl || '',
+          },
+          image_url: saveData.image_url || result.imageUrl || '',
+        });
+      } catch (error) {
+        toast({
+          title: '오류',
+          description: (error as Error).message || '페르소나를 생성하지 못했습니다. 다시 시도해 주세요.',
+          variant: 'destructive',
+        });
+        handleReset();
+      }
+    });
+  };
+
+  // handleResultSave: 결과 저장 후 추천 리스트 불러오기
+  const handleResultSave = (sessionId: string, data: any) => {
+    setMySessionId(sessionId);
+    setCurrentSessionId(sessionId);
+    setResultData(data);
+    setView('result');
+    setTimeout(() => fetchRecommendList(sessionId, birthDate, email), 0);
+  };
+
+  // fetchRecommendList: 추천 리스트 불러오기
+  const fetchRecommendList = async (excludeId?: string, excludeBirthDate?: string, excludeEmail?: string) => {
+    const idToExclude = excludeId || mySessionId;
+    const birthDateToExclude = excludeBirthDate || birthDate;
+    const emailToExclude = excludeEmail || email;
+    const params = new URLSearchParams();
+    if (idToExclude) params.append('excludeId', idToExclude);
+    if (birthDateToExclude) params.append('excludeBirthDate', birthDateToExclude);
+    if (emailToExclude) params.append('excludeEmail', emailToExclude);
+    const res = await fetch(`/api/get-recommend-list?${params.toString()}`);
+    const list = await res.json();
+    console.log('추천 리스트:', list);
+    setRecommendList(list);
+  };
+
+  // handleOtherCardClick: 추천 리스트 클릭 시 상세 결과 보기
+  const handleOtherCardClick = async (sessionId: string) => {
+    setIsLoadingResult(true);
+    setCurrentSessionId(sessionId);
+    setView('result');
+    const res = await fetch(`/api/get-session-detail/${sessionId}`);
+    const data = await res.json();
+    setResultData(data);
+    fetchRecommendList(mySessionId ?? undefined, birthDate, email);
+    setTimeout(() => setIsLoadingResult(false), 500); // 부드러운 전환을 위해 약간의 딜레이
+  };
+
+  // handleResetOrMyResult: 다시하기/내 결과로 전환
+  const handleResetOrMyResult = () => {
+    setView('main');
+    setResultData(null);
+    setCurrentSessionId(null);
+    setIsLoadingResult(false);
+    setStage('intro');
+    setRecommendedDestination(null);
+  };
+
+  // ====== useEffect 설명 ======
+  // - 바이오리듬 분석 및 퀴즈 질문 미리 불러오기
+  useEffect(() => {
+    const fetchBiorhythmAnalysis = async () => {
+      if (stage === 'biorhythm' && birthDate) {
+        setIsBiorhythmLoading(true);
+        // 바이오리듬 분석과 동시에 퀴즈 질문도 미리 fetch
+        fetchQuizQuestions();
+        try {
+          const birth = new Date(birthDate);
+          const today = new Date();
+          const biorhythm = calculateBiorhythm(birth, today);
+          // API 호출
+          const res = await fetch('/api/biorhythm-interpret', {
+            method: 'POST',
+            body: JSON.stringify({
+              physical: Math.round(biorhythm.physical * 100),
+              emotional: Math.round(biorhythm.emotional * 100),
+              intellectual: Math.round(biorhythm.intellectual * 100)
+            }),
+            headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await res.json();
+          const result = await getRecommendedDestination({
+            birthDate: birthDate,
+            quizAnswers: answers,
+            physical: biorhythm.physical,
+            emotional: biorhythm.emotional,
+            intellectual: biorhythm.intellectual,
+            perceptual: biorhythm.perceptual,
+          });
+          //console.log('[recommendedDestination 전체]', result);
+          setRecommendedDestination(result);
+        } catch (error) {
+          setRecommendedDestination({
+            personaTitle: '',
+            destinationName: '',
+            imageUrl: '',
+            analysis: 'AI 해석을 가져오는 데 실패했습니다.',
+            shortAnalysis: '요약 실패',
+            recommendations: [],
+            budget: '',
+            transport: '',
+            tip: '',
+            popularity: '',
+          });
+        } finally {
+          setIsBiorhythmLoading(false);
+        }
+      }
+    };
+    fetchBiorhythmAnalysis();
+  }, [stage, birthDate]);
+
+  useEffect(() => {
+    if (stage === 'biorhythm' && !isBiorhythmLoading && recommendedDestination) {
+      setShowBiorhythmContent(false);
+      setTimeout(() => setShowBiorhythmContent(true), 350); // 카드 리사이징 duration과 맞춤
+    } else if (stage !== 'biorhythm') {
+      setShowBiorhythmContent(false);
+    }
+  }, [stage, isBiorhythmLoading, recommendedDestination]);
+
+  // - 각 단계별 콘솔 출력 및 관리자 이미지/타이틀 불러오기
+  useEffect(() => {
+    if (stage === 'quiz' && questions.length > 0) {
+      console.log(`퀴즈 스테이지 ${currentStep + 1}:`, questions[currentStep]?.text);
+    }
+    // 전체 페이지 주요 스테이지 콘솔 출력
+    const stageNames: Record<string, string> = {
+      intro: '메인(생년월일 입력)',
+      biorhythm: '바이오리듬 분석',
+      quiz: '퀴즈 진행',
+      email: '이메일 입력',
+      loading_persona: 'AI 결과 생성 중',
+      result: '결과 페이지',
+    };
+    if (stage in stageNames) {
+      console.log(`[STAGE] ${stage}: ${stageNames[stage]}`);
+    }
+    // 이메일 입력 진입 시 관리자 이미지/타이틀 불러오기
+    if (stage === 'email') {
+      fetchAdminSettings()
+        .then(data => {
+          setAdminImageUrl(data?.imageUrl || null);
+          setAdminTitle(data?.title || null);
+        })
+        .catch(() => {
+          setAdminImageUrl(null);
+          setAdminTitle(null);
+        });
+    }
+  }, [stage, currentStep, questions]);
+
+  // - 이미지 로딩 상태 관리
+  useEffect(() => {
+    if (imgLoadStarted) {
+      imgLoadTimer.current = setTimeout(() => {
+        setImgLoaded(true);
+      }, 1000); // 최소 1초
+    }
+    return () => {
+      if (imgLoadTimer.current) clearTimeout(imgLoadTimer.current);
+    };
+  }, [imgLoadStarted]);
+
+  const handleImgLoad = useCallback(() => {
+    setImgLoadStarted(true);
+  }, []);
+
+  useEffect(() => {
+    // 최소 1.2초 후 loading false (무한로딩 방지)
+    const timer = setTimeout(() => setLoading(false), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.target as HTMLImageElement;
+    setImgNaturalWidth(img.naturalWidth);
+    setImgNaturalHeight(img.naturalHeight);
+    setImgLoaded(true);
+  };
+
+  // 이미지가 바뀔 때마다 imgLoaded 초기화
+  useEffect(() => {
+    setImgLoaded(false);
+  }, [adminImageUrl, recommendedDestination?.imageUrl]);
+
+  // ====== 렌더링 영역 ======
+  // 컨텐츠 사이즈 조절
+  const stageContentSizeMap: Record<Stage, { width: number, height: number }> = {
+    intro: { width: 350, height: 350 },
+    biorhythm: { width: 780, height: 780 },
+    quiz: { width: 670, height: 530 },
+    email: { width: 450, height: 500 },
+    loading_persona: { width: 380, height: 300 },
+    result: { width: 500, height: 600 },
+  };
+  const contentSize = stageContentSizeMap[stage];
+
+  // view === 'result' : 결과/상세/추천 리스트 SPA 렌더링
+  if (view === 'result') {
+    // 디버깅용 콘솔 로그 추가
+    //console.log('내 카드 resultData:', resultData);
+    //console.log('내 카드 resultData.imageUrl:', resultData?.imageUrl);
+    //console.log('내 카드 resultData.image_url:', resultData?.image_url);
+    //console.log('내 카드 resultData.ai_result:', resultData?.ai_result);
+    //console.log('내 카드 resultData.ai_result.imageUrl:', resultData?.ai_result?.imageUrl);
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={isLoadingResult ? 'loading' : (resultData?.id || 'result')}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.4 }}
+        >
+          {isLoadingResult ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center min-h-screen bg-background/70">
+              <div className="bg-card rounded-2xl shadow-xl p-8 flex flex-col justify-center items-center">
+                <LoadingSpinner title="결과 불러오는 중..." description="다른 여행자의 결과를 준비 중입니다." />
+              </div>
+            </div>
+          ) : resultData ? (
+            <div>
+              <ResultCard
+                persona={{
+                  personaName: resultData.personaName || resultData.ai_result?.personaName || resultData.ai_result?.personaTitle || '정보 없음',
+                  description: resultData.description || resultData.ai_result?.analysis || '정보 없음',
+                  destination: resultData.destination || resultData.ai_result?.destinationName || '정보 없음',
+                  imageUrl: resultData.imageUrl || resultData.ai_result?.imageUrl || '',
+                  recommendations: resultData.recommendations || resultData.ai_result?.recommendations || [],
+                  budget: resultData.budget || resultData.ai_result?.budget || '',
+                  transport: resultData.transport || resultData.ai_result?.transport || '',
+                  tip: resultData.tip || resultData.ai_result?.tip || '',
+                  likes: resultData.likes,
+                  id: '',
+                  email: '',
+                  birth_date: '',
+                }}
+                isMine={currentSessionId === mySessionId}
+                mySessionId={mySessionId || undefined}
+                onReset={handleResetOrMyResult}
+              >
+                <div>
+                  <p className="text-center text-muted-foreground mb-4">다른 여행자들의 추천 키워드</p>
+                  <RecommendList
+                    list={recommendList}
+                    onSelect={id => {
+                      console.log('[추천 리스트 클릭] id:', id);
+                      handleOtherCardClick(id);
+                    }}
+                  />
+                </div>
+              </ResultCard>
+            </div>
+          ) : null}
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // view !== 'result' 일 때만 stage별 분기 사용
+  return (
+    <div className="flex flex-col min-h-screen bg-background">
+      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8">
+        <div className="w-full transition-all duration-700 ease-in-out">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={stage}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.4 }}
+            >
+              {/* 배경 카드 컨테이너 */}
+              <div
+                className="bg-card rounded-2xl shadow-xl flex flex-col justify-center items-center transition-all duration-700"
+                style={{
+                  width: contentSize.width,
+                  minWidth: 320,
+                  maxWidth: 800,
+                  minHeight: contentSize.height,
+                  margin: '0 auto',
+                  transition: 'width 0.3s, min-width 0.3s, max-width 0.3s',
+                }}
+              >
+                {/* 컨텐츠 컨테이너 */}
+                <div className="p-8 sm:p-12 w-full flex flex-col justify-center items-center">
+                  {stage === 'intro' ? (
+                    <BirthDateInput
+                      value={birthDate}
+                      onChange={setBirthDate}
+                      onNext={handleShowBiorhythm}
+                      error={dateError}
+                      isPending={isPending}
+                      onDateSelect={date => {
+                        if (date) {
+                          setBirthDate(format(date, 'yyyy-MM-dd'));
+                          setDateError(null);
+                        }
+                      }}
+                    />
+                  ) : stage === 'biorhythm' && birthDate && !dateError && isValid(new Date(birthDate)) ? (
+                    <BiorhythmDisplay
+                      birthDate={new Date(birthDate)}
+                      onStartQuiz={() => { handleStartQuiz(); }}
+                      analysis={recommendedDestination?.analysis ?? null}
+                      isLoading={isBiorhythmLoading}
+                    />
+                  ) : stage === 'quiz' ? (
+                    <div className="w-full">
+                      <Quiz
+                        currentStep={currentStep}
+                        onAnswer={handleAnswer}
+                        questions={questions}
+                      />
+                    </div>
+                  ) : stage === 'email' ? (
+                    <>
+                      <div className="text-center w-full">
+                        <h2 className="text-2xl font-bold">AI 바이오리듬 분석</h2>
+                        <p className="mt-2 text-muted-foreground">
+                          {recommendedDestination?.shortAnalysis || "AI가 분석한 바이오리듬 해석 결과가 여기에 표시됩니다."}
+                        </p>
+                      </div>
+                      <div className="w-full mt-4 rounded-lg shadow-lg flex justify-center items-center">
+                        {(() => {
+                          const imageUrl = adminImageUrl || recommendedDestination?.imageUrl;
+                          const imageAlt = adminTitle || recommendedDestination?.destinationName || '';
+                          if (!imageUrl) {
+                            return (
+                              <div className="flex items-center justify-center w-full h-full bg-background/60 z-10">
+                                <LoadingSpinner title="이미지 불러오는 중..." description="여행지 이미지를 준비 중입니다." />
+                              </div>
+                            );
+                          }
+                          return (
+                            <>
+                              {!imgLoaded && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+                                  <LoadingSpinner title="이미지 불러오는 중..." description="여행지 이미지를 준비 중입니다." />
+                                </div>
+                              )}
+                              <Image
+                                key={imageUrl}
+                                src={imageUrl}
+                                alt={imageAlt}
+                                width={imgNaturalWidth || 500}
+                                height={imgNaturalHeight || 300}
+                                style={{
+                                  objectFit: 'cover',
+                                  opacity: imgLoaded ? 1 : 0,
+                                  transition: 'opacity 0.7s',
+                                  width: imgNaturalWidth || 500,
+                                  height: imgNaturalHeight || 300,
+                                  borderRadius: 16,
+                                  display: 'block',
+                                }}
+                                data-ai-hint="travel destination"
+                                onLoad={handleImageLoad}
+                                priority
+                              />
+                            </>
+                          );
+                        })()}
+                      </div>
+                      {adminTitle && (
+                        <h3 className="mt-4 text-xl font-medium text-center">{adminTitle}</h3>
+                      )}
+                      <h1 className="mt-10 text-2xl md:text-xl font-black font-headline text-center">
+                        거의 다 왔어요!
+                      </h1>
+                      <p className="mt-2 text-sm font-normal text-muted-foreground text-center">
+                        결과를 받아보실 이메일 주소를 입력해주세요.
+                      </p>
+                      <div className="mt-6 flex flex-col items-center gap-4 w-full">
+                        <EmailInput
+                          value={email}
+                          onChange={setEmail}
+                          privacyChecked={privacyChecked}
+                          onPrivacyChange={setPrivacyChecked}
+                          onNext={handleEmailSubmit}
+                          isPending={isPending}
+                        />
+                      </div>
+                    </>
+                  ) : stage === 'loading_persona' ? (
+                    <div>
+                      <LoadingSpinner />
+                    </div>
+                  ) : stage === 'result' && recommendedDestination ? (
+                    <div>
+                      <div className="my-8">
+                        <ResultCard
+                          persona={{
+                            personaName: recommendedDestination.personaTitle?.trim() ? recommendedDestination.personaTitle : '정보 없음',
+                            description: recommendedDestination.analysis?.trim() ? recommendedDestination.analysis : '정보 없음',
+                            destination: recommendedDestination.destinationName?.trim() ? recommendedDestination.destinationName : '정보 없음',
+                            imageUrl: recommendedDestination.imageUrl || '',
+                            recommendations: Array.isArray(recommendedDestination.recommendations) ? recommendedDestination.recommendations : [],
+                            budget: recommendedDestination.budget || '정보 없음',
+                            transport: recommendedDestination.transport || '정보 없음',
+                            tip: recommendedDestination.tip || '정보 없음',
+                            id: '',
+                            email: '',
+                            birth_date: '',
+                          }}
+                          onReset={handleReset}
+                        />
+                      </div>
+                      <div className="mt-8">
+                        <p className="text-center text-muted-foreground mb-4">다른 여행자들의 추천 키워드</p>
+                        <RecommendList
+                          list={recommendList}
+                          onSelect={id => {
+                            console.log('[추천 리스트 클릭] id:', id);
+                            handleOtherCardClick(id);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    // Fallback
+                    <div className="text-center py-20">
+                      <p className="text-lg text-destructive">잘못된 접근입니다. 처음부터 다시 시작해 주세요.</p>
+                      <Button className="mt-4" onClick={handleReset}>처음으로</Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+        <footer className="w-full mx-auto text-center text-xs text-muted-foreground pt-8">
+          <p><a href="#" className="hover:underline">개인정보처리방침</a> © ATOCnC Corp.</p>
+          <p>당신의 이야기를 담는 공간을 만듭니다.</p>
+        </footer>
+      </main>
+    </div>
+  );
+}
