@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { v4 as uuidv4 } from 'uuid';
 import { useRouter } from 'next/navigation';
+import ClientOnly from '@/components/ClientOnly';
 
 type ResultSessionRow = {
   id: string;
@@ -105,9 +106,9 @@ export default function AdminDashboard() {
   };
 
   const handleUpload = async () => {
-    console.log('handleUpload 실행');
+
     if (!selectedFile) {
-      console.log('선택된 파일 없음');
+  
       return;
     }
     setUploading(true);
@@ -132,7 +133,8 @@ export default function AdminDashboard() {
       data = { error: '서버에서 올바른 JSON을 반환하지 않았습니다.' };
     }
     if (response.ok && data.imageUrl) {
-      setImageUrl(`${data.imageUrl}?t=${Date.now()}`);
+      // 타임스탬프 없이 이미지 URL 설정
+      setImageUrl(data.imageUrl);
       setSelectedFile(null);
     } else {
      //alert('업로드 실패: ' + (data.error || '서버 오류, 콘솔/관리자에게 문의하세요.'));
@@ -171,126 +173,128 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <header className="mb-8 text-center relative">
-        <h1 className="text-3xl font-bold mb-2">WanderPersona 관리자 대시보드</h1>
-        <p className="text-gray-500">AI 모델/프롬프트 관리, 통계, 세션 조회</p>
-        <Button
-          onClick={handleLogout}
-          className="absolute right-0 top-0 bg-[#C4A4A4] text-white px-4 py-2 rounded font-semibold hover:bg-[#B784A7]"
-        >
-          로그아웃
-        </Button>
-      </header>
-      <div className="max-w-5xl mx-auto flex flex-col gap-8">
-        {/* 통계 */}
-        <section className="bg-white rounded shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">이용 통계</h2>
-          <div className="flex flex-wrap gap-6">
-            <div className="flex-1 min-w-[180px] bg-gray-100 rounded p-4 text-center">
-              <div className="text-2xl font-bold">{resultSessions.length}</div>
-              <div className="text-gray-500 mt-1">총 세션 수</div>
-            </div>
-            <div className="flex-1 min-w-[180px] bg-gray-100 rounded p-4 text-center">
-              <div className="text-2xl font-bold">{resultSessions.reduce((sum, s) => sum + (s.likes || 0), 0)}</div>
-              <div className="text-gray-500 mt-1">총 좋아요 수</div>
-            </div>
-            <div className="flex-1 min-w-[180px] bg-gray-100 rounded p-4 text-center">
-              <div className="text-2xl font-bold">{
-                Array.from(new Set(resultSessions.map(s => s.ai_result?.destination || ''))).filter(Boolean).length
-              }</div>
-              <div className="text-gray-500 mt-1">여행지 종류</div>
-            </div>
-          </div>
-        </section>
-        {/* 세션 리스트 */}
-        <section className="bg-white rounded shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">세션/이용자 리스트</h2>
-          {loading ? (
-            <div className="text-center text-gray-500 py-8">불러오는 중...</div>
-          ) : error ? (
-            <div className="text-center text-red-500 py-8">{error}</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm border">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="px-3 py-2 border">이메일</th>
-                    <th className="px-3 py-2 border">생년월일</th>
-                    <th className="px-3 py-2 border">추천 여행지</th>
-                    <th className="px-3 py-2 border">사용자 위치</th>
-                    <th className="px-3 py-2 border">좋아요</th>
-                    <th className="px-3 py-2 border">생성일</th>
-                    <th className="px-3 py-2 border">링크보기</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resultSessions.map(resultSession => (
-                    <tr key={resultSession.id}>
-                      <td className="px-3 py-2 border text-center">{resultSession.email}</td>
-                      <td className="px-3 py-2 border text-center">{resultSession.birth_date}</td>
-                      <td className="px-3 py-2 border text-center">{resultSession.recommended_destination || '-'}</td>
-                      <td className="px-3 py-2 border text-center">{resultSession.location || '-'}</td>
-                      <td className="px-3 py-2 border text-center">{resultSession.likes}</td>
-                      <td className="px-3 py-2 border text-center">{resultSession.created_at.slice(0, 10)}</td>
-                      <td className="px-3 py-2 border text-center text-blue-600 cursor-pointer">보기</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-        <section className="bg-white rounded shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">타이틀 및 이미지 업로드</h2>
-          <div className="flex gap-8 w-full">
-            <div className="flex-1">
-              <label className="block text-sm font-medium mb-1">타이틀</label>
-              <Input
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="타이틀을 입력하세요"
-                className="mb-6"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium mb-1">이미지 업로드</label>
-              <div className="flex gap-2 items-center w-full">
-                <Input
-                  value={selectedFile ? '파일이 선택되었습니다' : imageUrl}
-                  placeholder="이미지 URL 또는 파일 선택"
-                  className="flex-1"
-                  readOnly
-                  onClick={() => document.getElementById('file-upload-hidden')?.click()}
-                />
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  id="file-upload-hidden"
-                  onChange={handleFileChange}
-                />
-                <Button
-                  type="button"
-                  onClick={handleUpload}
-                  disabled={uploading || !selectedFile}
-                  className="h-10 px-6 bg-[#C4A4A4] text-white rounded font-semibold"
-                >
-                  업로드
-                </Button>
+    <ClientOnly>
+      <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <header className="mb-8 text-center relative">
+          <h1 className="text-3xl font-bold mb-2">WanderPersona 관리자 대시보드</h1>
+          <p className="text-gray-500">AI 모델/프롬프트 관리, 통계, 세션 조회</p>
+          <Button
+            onClick={handleLogout}
+            className="absolute right-0 top-0 bg-[#C4A4A4] text-white px-4 py-2 rounded font-semibold hover:bg-[#B784A7]"
+          >
+            로그아웃
+          </Button>
+        </header>
+        <div className="max-w-5xl mx-auto flex flex-col gap-8">
+          {/* 통계 */}
+          <section className="bg-white rounded shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">이용 통계</h2>
+            <div className="flex flex-wrap gap-6">
+              <div className="flex-1 min-w-[180px] bg-gray-100 rounded p-4 text-center">
+                <div className="text-2xl font-bold">{resultSessions.length}</div>
+                <div className="text-gray-500 mt-1">총 세션 수</div>
+              </div>
+              <div className="flex-1 min-w-[180px] bg-gray-100 rounded p-4 text-center">
+                <div className="text-2xl font-bold">{resultSessions.reduce((sum, s) => sum + (s.likes || 0), 0)}</div>
+                <div className="text-gray-500 mt-1">총 좋아요 수</div>
+              </div>
+              <div className="flex-1 min-w-[180px] bg-gray-100 rounded p-4 text-center">
+                <div className="text-2xl font-bold">{
+                  Array.from(new Set(resultSessions.map(s => s.ai_result?.destination || ''))).filter(Boolean).length
+                }</div>
+                <div className="text-gray-500 mt-1">여행지 종류</div>
               </div>
             </div>
-          </div>
-          <Button
-            type="button"
-            onClick={handleSave}
-            className="h-10 w-full px-6 bg-[#C4A4A4] text-white rounded font-semibold"
-            disabled={!title && !imageUrl}
-          >
-            저장
-          </Button>
-        </section>
+          </section>
+          {/* 세션 리스트 */}
+          <section className="bg-white rounded shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">세션/이용자 리스트</h2>
+            {loading ? (
+              <div className="text-center text-gray-500 py-8">불러오는 중...</div>
+            ) : error ? (
+              <div className="text-center text-red-500 py-8">{error}</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm border">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="px-3 py-2 border">이메일</th>
+                      <th className="px-3 py-2 border">생년월일</th>
+                      <th className="px-3 py-2 border">추천 여행지</th>
+                      <th className="px-3 py-2 border">사용자 위치</th>
+                      <th className="px-3 py-2 border">좋아요</th>
+                      <th className="px-3 py-2 border">생성일</th>
+                      <th className="px-3 py-2 border">링크보기</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resultSessions.map(resultSession => (
+                      <tr key={resultSession.id}>
+                        <td className="px-3 py-2 border text-center">{resultSession.email}</td>
+                        <td className="px-3 py-2 border text-center">{resultSession.birth_date}</td>
+                        <td className="px-3 py-2 border text-center">{resultSession.recommended_destination || '-'}</td>
+                        <td className="px-3 py-2 border text-center">{resultSession.location || '-'}</td>
+                        <td className="px-3 py-2 border text-center">{resultSession.likes}</td>
+                        <td className="px-3 py-2 border text-center">{resultSession.created_at.slice(0, 10)}</td>
+                        <td className="px-3 py-2 border text-center text-blue-600 cursor-pointer">보기</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+          <section className="bg-white rounded shadow p-6">
+            <h2 className="text-xl font-semibold mb-4">타이틀 및 이미지 업로드</h2>
+            <div className="flex gap-8 w-full">
+              <div className="flex-1">
+                <label className="block text-sm font-medium mb-1">타이틀</label>
+                <Input
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  placeholder="타이틀을 입력하세요"
+                  className="mb-6"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium mb-1">이미지 업로드</label>
+                <div className="flex gap-2 items-center w-full">
+                  <Input
+                    value={selectedFile ? '파일이 선택되었습니다' : imageUrl}
+                    placeholder="이미지 URL 또는 파일 선택"
+                    className="flex-1"
+                    readOnly
+                    onClick={() => document.getElementById('file-upload-hidden')?.click()}
+                  />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    id="file-upload-hidden"
+                    onChange={handleFileChange}
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleUpload}
+                    disabled={uploading || !selectedFile}
+                    className="h-10 px-6 bg-[#C4A4A4] text-white rounded font-semibold"
+                  >
+                    업로드
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              onClick={handleSave}
+              className="h-10 w-full px-6 bg-[#C4A4A4] text-white rounded font-semibold"
+              disabled={!title && !imageUrl}
+            >
+              저장
+            </Button>
+          </section>
+        </div>
       </div>
-    </div>
+    </ClientOnly>
   );
 }

@@ -15,7 +15,7 @@ type QuizProps = {
 export function Quiz({ currentStep, onAnswer, questions, selectedOption }: QuizProps & { selectedOption?: string }) {
   useEffect(() => {
     if (questions.length > 0) {
-      console.log(`퀴즈 스테이지 ${currentStep + 1}:`, questions[currentStep]?.text);
+  
     }
   }, [currentStep, questions]);
 

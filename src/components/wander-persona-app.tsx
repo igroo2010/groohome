@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 // 유틸리티 및 액션
 import { getRecommendedDestination } from '@/app/actions';
 import { calculateBiorhythm } from '@/lib/biorhythm';
-import { fetchAdminSettings } from '@/lib/fetchAdminSettings';
+
 
 // 타입
 import type { RecommendDestinationOutput } from '@/ai/flows/recommend-destination';
@@ -71,25 +71,7 @@ const YEAR_RANGE = {
   MAX: new Date().getFullYear()
 };
 
-// 환율 테이블 (실제 환율은 최신값으로 갱신 필요)
-const currencyTable: Record<string, { symbol: string; code: string; rate: number }> = {
-  KR: { symbol: '₩', code: 'KRW', rate: 1 },
-  JP: { symbol: '¥', code: 'JPY', rate: 0.011 }, // 1 KRW = 0.011 JPY (예시)
-  US: { symbol: '$', code: 'USD', rate: 0.00072 },
-  FR: { symbol: '€', code: 'EUR', rate: 0.00067 },
-  // ...필요한 국가 추가
-};
 
-// budget 문자열(KRW 기준)을 해당 국가 통화로 변환하는 함수
-function convertBudgetToLocalCurrency(budgetKRWString: string, userCountryCode: string) {
-  const currency = currencyTable[userCountryCode] || currencyTable['US']; // 기본값: USD
-  // "80,000 KRW" → "880 JPY" 등으로 변환
-  return budgetKRWString.replace(/([0-9,]+) KRW/g, (match, amount) => {
-    const krw = parseInt(amount.replace(/,/g, ''), 10);
-    const local = Math.round(krw * currency.rate);
-    return `${local.toLocaleString()} ${currency.code}`;
-  });
-}
 
 // 1. 생년월일 입력 컴포넌트
 function BirthDateInput({ 
@@ -301,27 +283,10 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     setCurrentSessionId(null);
   }, []);
 
-  // fetchQuizQuestions: 바이오리듬 분석 진입 시 퀴즈 질문 미리 받아오기
+  // fetchQuizQuestions: 퀴즈 질문을 클라이언트에서 직접 생성
   const fetchQuizQuestions = async () => {
-    try {
-      const adminSettings = await fetchAdminSettings();
-      const res = await fetch('/api/generate-quiz-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: adminSettings.text_model,
-          apiKey: adminSettings.text_model_apikey,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.questions)) {
-        setQuestions(data.questions);
-      } else {
-        setQuestions(getShuffledQuestions());
-      }
-    } catch (e) {
-      setQuestions(getShuffledQuestions());
-    }
+    // 불필요한 API 호출 제거하고 클라이언트에서 직접 질문 생성
+    setQuestions(getShuffledQuestions());
   };
 
   // handleShowBiorhythm: 바이오리듬 분석 단계로 이동
@@ -419,6 +384,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
           destinationName: result.destinationName || '',
         };
         // 위치 정보(userLocation)를 함께 저장
+    
         const saveRes = await fetch('/api/save-quiz-result-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -436,7 +402,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
           throw new Error('DB 저장 실패');
         }
         const saveData: any = await saveRes.json();
-        console.log('[DB 저장 결과]', saveData);
+    
         // DB에 저장된 publicUrl로 recommendedDestination의 imageUrl 갱신 (prev null 체크)
         setRecommendedDestination(prev => {
           if (!prev) return null;
@@ -493,7 +459,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     if (emailToExclude) params.append('excludeEmail', emailToExclude);
     const res = await fetch(`/api/get-recommend-list?${params.toString()}`);
     const list = await res.json();
-    console.log('추천 리스트:', list);
+
     setRecommendList(list);
   };
 
@@ -533,42 +499,30 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     setImgLoaded(false);
   }, [adminImageUrl, recommendedDestination?.imageUrl]);
 
-  // Kakao API를 이용해 현 위치 주소와 국가코드를 받아오는 함수
-  const fetchUserLocation = useCallback(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          try {
-            // Kakao API로 위도/경도를 주소+국가코드로 변환
-            const res = await fetch(`/api/kakao-geocode?lat=${lat}&lng=${lng}`);
-            const { address, country_code } = await res.json();
-            if (!address || address.trim() === '' || address.includes('undefined')) {
-              setUserLocation('');
-              setUserCountryCode('KR'); // 실패 시 기본값
-              console.log('[현위치 주소] 실패:', address);
-            } else {
-              setUserLocation(address);
-              setUserCountryCode((country_code || 'KR').toUpperCase());
-              console.log('[현위치 주소]', address, '국가코드:', country_code);
-            }
-          } catch (e) {
-            setUserLocation('');
-            setUserCountryCode('KR');
-            console.log('[현위치 주소] 네트워크/서버 오류:', e);
-          }
-        },
-        (error) => {
-          setUserLocation('');
-          setUserCountryCode('KR');
-          console.log('[현위치 주소] 권한 거부:', error);
-        },
-        { enableHighAccuracy: false, timeout: 5000 }
-      );
-    } else {
-      setUserCountryCode('KR');
-      console.log('[현위치 주소] geolocation 미지원');
+  // IP 기반으로 미국 주(State) 정보를 가져오는 함수
+  const fetchUserLocation = useCallback(async () => {
+
+    try {
+      // IP 기반 위치 정보 API 호출
+  
+      const res = await fetch('/api/ip-location');
+      const data = await res.json();
+      
+      const { state, country, city } = data;
+      if (state && state !== 'Unknown') {
+        const locationText = city && city !== 'Unknown' ? `${city}, ${state}` : state;
+        setUserLocation(locationText);
+        setUserCountryCode(country || 'US');
+    
+      } else {
+        setUserLocation('');
+        setUserCountryCode('US');
+    
+      }
+    } catch (e) {
+      setUserLocation('');
+      setUserCountryCode('US');
+  
     }
   }, []);
 
@@ -643,7 +597,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
   // - 각 단계별 콘솔 출력 및 관리자 이미지/타이틀 불러오기
   useEffect(() => {
     if (stage === 'quiz' && questions.length > 0) {
-      console.log(`퀴즈 스테이지 ${currentStep + 1}:`, questions[currentStep]?.text);
+  
     }
     // 전체 페이지 주요 스테이지 콘솔 출력
     const stageNames: Record<string, string> = {
@@ -659,8 +613,9 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     }
     // 이메일 입력 진입 시 관리자 이미지/타이틀 불러오기
     if (stage === 'email') {
-      fetchAdminSettings()
-        .then(data => {
+      fetch('/api/admin-settings')
+        .then(res => res.json())
+        .then((data: any) => {
           setAdminImageUrl(data?.imageUrl || null);
           setAdminTitle(data?.title || null);
         })
@@ -737,7 +692,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
                   <RecommendList
                     list={recommendList}
                     onSelect={id => {
-                      console.log('[추천 리스트 클릭] id:', id);
+                  
                       handleOtherCardClick(id);
                     }}
                   />
@@ -921,7 +876,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
                         <RecommendList
                           list={recommendList}
                           onSelect={id => {
-                            console.log('[추천 리스트 클릭] id:', id);
+                        
                             handleOtherCardClick(id);
                           }}
                         />

@@ -6,15 +6,12 @@ import {
   Heart,
   Link,
   MapPin,
-  Home,
-  Utensils,
-  Landmark,
   Repeat,
   DollarSign,
   TrainFront,
   Lightbulb,
 } from 'lucide-react';
-// import type { RecommendDestinationOutput } from '@/ai/flows/recommend-destination'; // 사용하지 않으므로 삭제
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -22,11 +19,7 @@ import { Separator } from './ui/separator';
 import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 
-declare global {
-  interface Window {
-    Kakao: any;
-  }
-}
+
 
 type Recommendation = {
   type: string;
@@ -128,24 +121,7 @@ function BudgetWithExchange({ budget }: { budget: string }) {
   );
 }
 
-// 카카오 SDK 동적 로드 및 초기화 (환경변수 사용)
-function useKakaoInit() {
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !window.Kakao) {
-      const script = document.createElement('script');
-      script.src = 'https://developers.kakao.com/sdk/js/kakao.min.js';
-      script.async = true;
-      script.onload = () => {
-        if (window.Kakao && !window.Kakao.isInitialized()) {
-          window.Kakao.init(process.env.NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY);
-        }
-      };
-      document.body.appendChild(script);
-    } else if (window.Kakao && !window.Kakao.isInitialized()) {
-      window.Kakao.init(process.env.NEXT_PUBLIC_KAKAO_JAVASCRIPT_KEY);
-    }
-  }, []);
-}
+
 
 export function ResultCard({ persona, onReset, isMine = false, mySessionId, children }: ResultCardProps) {
   const [activeAddress, setActiveAddress] = useState<number | null>(null);
@@ -192,7 +168,7 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
     return () => { ignore = true; };
   }, [persona.destination]);
 
-  useKakaoInit();
+
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href).then(
@@ -257,34 +233,7 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
     }
   };
 
-  // 카카오톡 공유 함수
-  const handleKakaoShare = () => {
-    if (!window.Kakao || !window.Kakao.isInitialized()) {
-      alert('카카오 SDK 로드 실패');
-      return;
-    }
-    window.Kakao.Share.sendDefault({
-      objectType: 'feed',
-      content: {
-        title: persona.personaName || '여행 추천',
-        description: persona.description || '여행 추천 결과를 확인해보세요!',
-        imageUrl: persona.imageUrl || 'https://your-default-image-url.com',
-        link: {
-          mobileWebUrl: window.location.href,
-          webUrl: window.location.href,
-        },
-      },
-      buttons: [
-        {
-          title: '웹에서 보기',
-          link: {
-            mobileWebUrl: window.location.href,
-            webUrl: window.location.href,
-          },
-        },
-      ],
-    });
-  };
+
 
   return (
     <Card className="w-full max-w-xl mx-auto shadow-2xl overflow-hidden border-2 border-primary/20 min-h-[600px]">
@@ -401,9 +350,6 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
         </div>
 
         <div className="mt-8 pt-6 border-t flex items-center justify-center gap-2">
-          <Button variant="outline" className="rounded-full h-12 px-6" onClick={handleKakaoShare} disabled>
-            Share on Kakao
-          </Button>
           <Button variant="outline" size="icon" className="rounded-full w-12 h-12" onClick={handleCopyLink}>
             <Link className="w-5 h-5" />
           </Button>

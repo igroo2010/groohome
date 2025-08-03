@@ -35,8 +35,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     let { email, birth_date, quiz_answers, ai_result, image_url, location: clientLocation } = body;
-    // location은 반드시 클라이언트에서 geolocation+reverse geocode로 변환된 한글 주소만 저장
-    let location = (clientLocation && clientLocation !== '') ? clientLocation : '위치 정보 없음';
+    // location은 IP 기반으로 가져온 미국 주(State) 정보
+
+    let location = (clientLocation && clientLocation !== '') ? clientLocation : 'Location Unknown';
+
     // IP 기반 detectCity 로직 완전히 제거
     const now = new Date();
     const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -62,7 +64,7 @@ export async function POST(req: NextRequest) {
           if (error) {
             console.error('Storage 업로드 실패:', error);
           } else {
-            console.log('Storage 업로드 성공:', data);
+        
             // 3. public URL 획득
             const { data: urlData } = supabase.storage
               .from('result-images')

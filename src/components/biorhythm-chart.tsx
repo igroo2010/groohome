@@ -11,7 +11,7 @@ type BiorhythmChartProps = {
 };
 
 export function BiorhythmChart({ birthDate }: BiorhythmChartProps) {
-  console.log('[BiorhythmChart] 호출됨, birthDate:', birthDate, typeof birthDate, birthDate instanceof Date);
+
   const chartData = React.useMemo(() => {
     if (!birthDate) {
      //console.log('[BiorhythmChart] birthDate falsy:', birthDate);
