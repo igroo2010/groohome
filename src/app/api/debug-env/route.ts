@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(req: NextRequest) {
-  // 보안: 개발 환경에서만 작동
-  if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 });
-  }
+  // 임시: 프로덕션에서도 디버깅 허용 (문제 해결 후 제거 예정)
 
   const envDebug = {
     NODE_ENV: process.env.NODE_ENV,

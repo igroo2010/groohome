@@ -49,10 +49,13 @@ export async function GET(req: NextRequest) {
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
     
     return NextResponse.json({
       status: 'failed',
       error: errorMessage,
+      errorStack: errorStack,
+      errorType: typeof error,
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }
