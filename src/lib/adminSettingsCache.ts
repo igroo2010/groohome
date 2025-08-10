@@ -1,12 +1,15 @@
-import { createClient } from '@supabase/supabase-js';
+// 관리자 설정은 .env에서만 불러옴 (Supabase 불필요)
 
-// supabase는 여전히 필요할 수 있으나, 관리자 설정은 .env에서만 불러옴
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+interface AdminSettings {
+  text_model: string;
+  text_model_apikey: string;
+  image_model: string;
+  image_model_apikey: string;
+  title: string;
+  imageUrl: string;
+}
 
-let cachedSettings: any = null;
+let cachedSettings: AdminSettings | null = null;
 let lastFetched: number = 0;
 const CACHE_TTL = 1000 * 60 * 5; // 5분
 
@@ -16,7 +19,7 @@ const CACHE_TTL = 1000 * 60 * 5; // 5분
  *
  * 캐시를 즉시 무효화하려면 clearAdminSettingsCache()를 호출하세요.
  */
-export async function getAdminSettings() {
+export async function getAdminSettings(): Promise<AdminSettings> {
   const now = Date.now();
   if (cachedSettings && now - lastFetched < CACHE_TTL) {
     return cachedSettings;

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getClientIp, getToday, isLikedToday } from '@/lib/utils';
 
+type LikedItem = {
+  ip?: string;
+  user_id?: string;
+  date: string;
+};
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -10,7 +16,7 @@ const supabase = createClient(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { destination, email, birth_date } = body;
+    const { destination, email, birth_date, sessionId } = body; // sessionId 추가
     if (!destination) {
       return NextResponse.json({ error: 'Destination is required' }, { status: 400 });
     }
@@ -26,16 +32,29 @@ export async function POST(req: NextRequest) {
       userId = user?.id;
     }
 
-    // row 찾기: id → email+birth_date+recommended_destination
+    // row 찾기: sessionId가 있으면 해당 세션, 없으면 기존 로직
     let query = supabase
       .from('result_sessions')
-      .select('id, likes, liked_ips, ai_result, email, birth_date')
-      .eq('recommended_destination', destination);
-    if (userId) {
-      query = query.eq('id', userId);
-    } else if (email && birth_date) {
-      query = query.eq('email', email).eq('birth_date', birth_date);
+      .select('id, likes, liked_ips, ai_result, email, birth_date');
+    
+    if (sessionId) {
+      // 특정 세션 ID로 직접 조회
+      query = query.eq('id', sessionId);
+    } else {
+      // sessionId가 없으면 기존 로직
+      query = query.eq('recommended_destination', destination);
+      
+      // 인증된 사용자인 경우 본인 데이터 우선 조회
+      if (userId) {
+        query = query.eq('id', userId);
+      } else if (email && birth_date) {
+        query = query.eq('email', email).eq('birth_date', birth_date);
+      } else {
+        // email이나 birth_date가 없어도 해당 destination의 첫 번째 데이터를 가져옴
+        query = query.limit(1);
+      }
     }
+    
     const { data: existingData, error: selectError } = await query.single();
 
     if (selectError && selectError.code !== 'PGRST116') {
@@ -45,7 +64,7 @@ export async function POST(req: NextRequest) {
     if (existingData) {
       // 기존 데이터가 있는 경우 좋아요 토글 처리
       const currentLikes = existingData.likes || 0;
-      let likedIps = existingData.liked_ips || [];
+      let likedIps: LikedItem[] = existingData.liked_ips || [];
       const alreadyLiked = isLikedToday(likedIps, ip, userId);
       if (!alreadyLiked) {
         // 좋아요 +1, liked_ips에 추가
@@ -68,7 +87,7 @@ export async function POST(req: NextRequest) {
         }, { status: 200 });
       } else {
         // 좋아요 -1, liked_ips에서 제거
-        likedIps = likedIps.filter((item: any) =>
+        likedIps = likedIps.filter((item: LikedItem) =>
           userId ? !(item.user_id === userId && item.date === today) : !(item.ip === ip && item.date === today)
         );
         const { error: updateError } = await supabase
@@ -124,9 +143,12 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const destination = searchParams.get('destination');
+    const sessionId = searchParams.get('sessionId'); // 세션 ID 추가
+    
     if (!destination) {
       return NextResponse.json({ error: 'Destination is required' }, { status: 400 });
     }
+    
     const ip = getClientIp(req);
     let userId: string | undefined = undefined;
     const authHeader = req.headers.get('authorization');
@@ -135,15 +157,24 @@ export async function GET(req: NextRequest) {
       const { data: { user } } = await supabase.auth.getUser(accessToken);
       userId = user?.id;
     }
-    const today = getToday();
-    const { data: existingData, error: selectError } = await supabase
+
+    // 특정 세션 ID가 있으면 해당 세션의 데이터를 가져오기
+    let query = supabase
       .from('result_sessions')
-      .select('liked_ips, likes')
-      .eq('recommended_destination', destination)
-      .single();
+      .select('liked_ips, likes');
+    
+    if (sessionId) {
+      query = query.eq('id', sessionId);
+    } else {
+      // sessionId가 없으면 기존 로직 (destination 기준)
+      query = query.eq('recommended_destination', destination);
+    }
+    
+    const { data: existingData, error: selectError } = await query.single();
     if (selectError && selectError.code !== 'PGRST116') {
       return NextResponse.json({ error: 'Database error' }, { status: 500 });
     }
+    
     const likedIps = existingData?.liked_ips || [];
     const alreadyLiked = isLikedToday(likedIps, ip, userId);
     const likes = existingData?.likes || 0;

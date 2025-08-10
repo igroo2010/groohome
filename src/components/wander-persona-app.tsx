@@ -1,13 +1,13 @@
 'use client';
 
 // React 관련
-import React, { useState, useTransition, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useTransition, useEffect, useCallback } from 'react';
 
 // Next.js 관련
 import Image from 'next/image';
 
 // 외부 라이브러리
-import { format, isValid } from 'date-fns';
+import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wand2, Calendar as CalendarIcon, Mail } from 'lucide-react';
 
@@ -63,7 +63,7 @@ interface EmailInputProps {
 // 상수 정의
 const DATE_FORMAT = {
   MAX_LENGTH: 8,
-  MAX_DISPLAY_LENGTH: 10 // YYYY-MM-DD 형식
+  MAX_DISPLAY_LENGTH: 10 // MM/DD/YYYY 형식
 };
 
 const YEAR_RANGE = {
@@ -72,6 +72,23 @@ const YEAR_RANGE = {
 };
 
 
+
+
+
+// MM/DD/YYYY 형식의 문자열을 Date 객체로 변환하는 함수 (전역)
+function parseUSDateString(dateString: string): Date | null {
+  const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const match = dateString.match(dateRegex);
+  
+  if (!match) return null;
+  
+  const [, monthStr, dayStr, yearStr] = match;
+  const month = parseInt(monthStr, 10);
+  const day = parseInt(dayStr, 10);
+  const year = parseInt(yearStr, 10);
+  
+  return new Date(year, month - 1, day);
+}
 
 // 1. 생년월일 입력 컴포넌트
 function BirthDateInput({ 
@@ -82,7 +99,7 @@ function BirthDateInput({
   isPending, 
   onDateSelect 
 }: BirthDateInputProps) {
-  // 하이픈 자동 입력 핸들러
+  // 슬래시 자동 입력 핸들러 (MM/DD/YYYY 형식)
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     let v = e.target.value.replace(/[^\d]/g, '');
     
@@ -91,13 +108,13 @@ function BirthDateInput({
       v = v.slice(0, DATE_FORMAT.MAX_LENGTH);
     }
     
-    // 하이픈 자동 삽입 로직
+    // 슬래시 자동 삽입 로직 (MM/DD/YYYY)
     let formattedValue = v;
-    if (v.length >= 4) {
-      formattedValue = v.slice(0, 4) + '-' + v.slice(4);
+    if (v.length >= 2) {
+      formattedValue = v.slice(0, 2) + '/' + v.slice(2);
     }
-    if (v.length >= 6) {
-      formattedValue = v.slice(0, 4) + '-' + v.slice(4, 6) + '-' + v.slice(6);
+    if (v.length >= 4) {
+      formattedValue = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
     }
     
     onChange(formattedValue);
@@ -118,7 +135,7 @@ function BirthDateInput({
       <div className="mt-8 flex flex-col items-center gap-2 w-full">
         <div className="flex w-full max-w-sm mx-auto items-center gap-2">
           <Input
-            placeholder="YYYY-MM-DD"
+            placeholder="MM/DD/YYYY"
             value={value}
             onChange={handleInput}
             disabled={isPending}
@@ -126,7 +143,7 @@ function BirthDateInput({
           />
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant={"outline"} size="icon" className="shrink-0">
+              <Button variant={"outline"} size="icon" className="shrink-0 hover:bg-primary hover:text-primary-foreground hover:border-primary">
                 <CalendarIcon className="h-4 w-4" />
                 <span className="sr-only">달력에서 날짜 선택</span>
               </Button>
@@ -134,11 +151,12 @@ function BirthDateInput({
             <PopoverContent className="w-auto p-0">
               <Calendar
                 mode="single"
-                selected={value ? new Date(value) : undefined}
+                selected={value ? parseUSDateString(value) || undefined : undefined}
                 onSelect={onDateSelect}
-                captionLayout="dropdown-buttons"
+                captionLayout="buttons"
                 fromYear={YEAR_RANGE.MIN}
                 toYear={YEAR_RANGE.MAX}
+                className="rounded-md border"
               />
             </PopoverContent>
           </Popover>
@@ -211,7 +229,7 @@ function EmailInput({
 // 5. 결과 컴포넌트: AI가 분석한 여행 페르소나/추천지 결과를 보여줌
 
 // WanderPersonaApp: 전체 페르소나 생성 플로우를 관리하는 메인 컴포넌트
-export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: string }) {
+export function WanderPersonaApp() {
   // ====== 상태 관리 ======
   // 각 단계(stage), 퀴즈 답변, 입력값, 결과 등 상태 관리
   const [stage, setStage] = useState<Stage>('intro');
@@ -229,37 +247,89 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
   const [adminImageUrl, setAdminImageUrl] = useState<string | null>(null);
   const [adminTitle, setAdminTitle] = useState<string | null>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const imgLoadTimer = useRef<NodeJS.Timeout | null>(null);
+  const [imageUrlWithCache, setImageUrlWithCache] = useState<string | null>(null);
+
+
+  // adminImageUrl이 변경될 때만 캐시 버스팅 URL 생성
+  useEffect(() => {
+    if (adminImageUrl) {
+      const imageUrl = adminImageUrl.includes('?') 
+        ? `${adminImageUrl}&cb=${Date.now()}`
+        : `${adminImageUrl}?cb=${Date.now()}`;
+      setImageUrlWithCache(imageUrl);
+      setImgLoaded(false); // 새 이미지 로딩 시작
+      console.log('[Image] 원본 URL:', adminImageUrl);
+      console.log('[Image] 캐시버스팅 URL:', imageUrl);
+    } else {
+      setImageUrlWithCache(null);
+      setImgLoaded(false);
+    }
+  }, [adminImageUrl]);
   const [mySessionId, setMySessionId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   // 타입 명확화
+  interface AIResult {
+    personaTitle?: string;
+    personaName?: string;
+    destinationName?: string;
+    imageUrl?: string;
+    analysis?: string;
+    shortAnalysis?: string;
+    recommendations?: Array<{
+      type: string;
+      name: string;
+      address: string;
+      description?: string;
+      preferenceScore?: number;
+    }>;
+    budget?: string;
+    transport?: string;
+    tip?: string;
+    destination?: string;
+  }
+
   interface ResultData {
     id?: string;
     personaName?: string;
     description?: string;
     destination?: string;
     imageUrl?: string;
-    recommendations?: string[];
+    recommendations?: Array<{
+      type: string;
+      name: string;
+      address: string;
+      description: string;
+      preferenceScore?: number;
+    }>;
     budget?: string;
     transport?: string;
     tip?: string;
     likes?: number;
-    ai_result?: any;
+    ai_result?: AIResult;
+    image_url?: string;
+    recommended_destination?: string;
+    email?: string;
+    birth_date?: string;
+  }
+
+  interface SaveResponseData {
+    success: boolean;
+    sessionId: string;
     image_url?: string;
   }
   const [resultData, setResultData] = useState<ResultData | null>(null);
   interface RecommendItem {
-    id?: string;
-    personaName?: string;
-    destination?: string;
-    imageUrl?: string;
+    id: string;
+    recommended_destination: string;
+    session_id: string;
+    likes: number;
   }
   const [recommendList, setRecommendList] = useState<RecommendItem[]>([]);
   const [view, setView] = useState<'main' | 'result'>('main');
   const [isLoadingResult, setIsLoadingResult] = useState(false);
   const [imgNaturalHeight, setImgNaturalHeight] = useState<number | null>(null);
-  const [cardWidth, setCardWidth] = useState(650);
-  const [showBiorhythmContent, setShowBiorhythmContent] = useState(false);
+
+
 
 
   // ====== 핸들러 함수들 ======
@@ -298,14 +368,48 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
       } else {
         setQuestions(getShuffledQuestions());
       }
-    } catch (e) {
+    } catch {
       setQuestions(getShuffledQuestions());
     }
   };
 
+  // 날짜 유효성 검사 함수 (MM/DD/YYYY 형식)
+  const validateDate = (dateString: string): string | null => {
+    if (!dateString) return 'Please enter your birth date.';
+    
+    // MM/DD/YYYY 형식 검사
+    const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+    const match = dateString.match(dateRegex);
+    
+    if (!match) return 'Please enter date in MM/DD/YYYY format.';
+    
+    const [, monthStr, dayStr, yearStr] = match;
+    const month = parseInt(monthStr, 10);
+    const day = parseInt(dayStr, 10);
+    const year = parseInt(yearStr, 10);
+    
+    // 기본 범위 검사
+    if (month < 1 || month > 12) return 'Please enter a valid month (1-12).';
+    if (day < 1 || day > 31) return 'Please enter a valid day.';
+    if (year < YEAR_RANGE.MIN || year > YEAR_RANGE.MAX) {
+      return `Please enter a year between ${YEAR_RANGE.MIN} and ${YEAR_RANGE.MAX}.`;
+    }
+    
+    // 실제 날짜 유효성 검사
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+      return 'Please enter a valid date.';
+    }
+    
+    return null;
+  };
+
   // handleShowBiorhythm: 바이오리듬 분석 단계로 이동
   const handleShowBiorhythm = () => {
-    if (birthDate && !dateError) {
+    const error = validateDate(birthDate);
+    setDateError(error);
+    
+    if (!error) {
       setStage('biorhythm');
     }
   };
@@ -353,7 +457,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
       const ipRes = await fetch('https://api.ipify.org?format=json');
       const data = await ipRes.json();
       ip = data.ip;
-    } catch (e) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Unable to retrieve external IP. Please check your network environment.',
@@ -373,7 +477,16 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
       }
       try {
         // AI 연동: 사용자의 퀴즈 답변과 바이오리듬을 기반으로 여행 페르소나/여행지 결과를 AI에게 요청합니다.
-        const birth = new Date(birthDate);
+        const birth = parseUSDateString(birthDate);
+        if (!birth) {
+          toast({
+            title: 'Error',
+            description: 'Invalid birth date format. Please try again.',
+            variant: 'destructive',
+          });
+          handleReset();
+          return;
+        }
         const today = new Date();
         const biorhythm = calculateBiorhythm(birth, today);
         const result = await getRecommendedDestination({
@@ -397,6 +510,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
           imageUrl: result.imageUrl || '',
           destinationName: result.destinationName || '',
         };
+        // 위치 정보(userLocation)를 함께 저장
         const saveRes = await fetch('/api/save-quiz-result-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -406,13 +520,13 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
             quiz_answers: answers,
             ai_result: aiResultToSave,
             image_url: result.imageUrl,
-            ip,
+            ip
           }),
         });
         if (!saveRes.ok) {
           throw new Error('DB 저장 실패');
         }
-        const saveData: any = await saveRes.json();
+        const saveData: SaveResponseData = await saveRes.json();
         console.log('[DB 저장 결과]', saveData);
         // DB에 저장된 publicUrl로 recommendedDestination의 imageUrl 갱신 (prev null 체크)
         setRecommendedDestination(prev => {
@@ -451,7 +565,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
   };
 
   // handleResultSave: 결과 저장 후 추천 리스트 불러오기
-  const handleResultSave = (sessionId: string, data: any) => {
+  const handleResultSave = (sessionId: string, data: ResultData) => {
     setMySessionId(sessionId);
     setCurrentSessionId(sessionId);
     setResultData(data);
@@ -471,7 +585,21 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     const res = await fetch(`/api/get-recommend-list?${params.toString()}`);
     const list = await res.json();
     console.log('추천 리스트:', list);
-    setRecommendList(list);
+    // API 응답을 RecommendItem 형태로 변환
+    interface ApiRecommendItem {
+      id: string;
+      recommended_destination: string;
+      likes: number;
+      birth_date: string;
+      email: string;
+    }
+    const mappedList: RecommendItem[] = (list as ApiRecommendItem[]).map((item) => ({
+      id: item.id,
+      recommended_destination: item.recommended_destination,
+      session_id: item.id, // id를 session_id로 사용
+      likes: item.likes || 0,
+    }));
+    setRecommendList(mappedList);
   };
 
   // handleOtherCardClick: 추천 리스트 클릭 시 상세 결과 보기
@@ -499,6 +627,21 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     // birthDate, recommendedDestination, email 등은 그대로 유지
   };
 
+  // handleGoToMyResult: URL 변경 없이 내 결과로 상태만 변경
+  const handleGoToMyResult = async () => {
+    if (!mySessionId) return;
+    
+    setIsLoadingResult(true);
+    setCurrentSessionId(mySessionId);
+    
+    // 내 결과 데이터 가져오기
+    const res = await fetch(`/api/get-session-detail/${mySessionId}`);
+    const data = await res.json();
+    setResultData(data);
+    fetchRecommendList(mySessionId, birthDate, email);
+    setTimeout(() => setIsLoadingResult(false), 500);
+  };
+
   // 이미지 로딩 핸들러 복원
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.target as HTMLImageElement;
@@ -521,7 +664,23 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
         // 바이오리듬 분석과 동시에 퀴즈 질문도 미리 fetch
         fetchQuizQuestions();
         try {
-          const birth = new Date(birthDate);
+          const birth = parseUSDateString(birthDate);
+          if (!birth) {
+            setRecommendedDestination({
+              personaTitle: '',
+              destinationName: '',
+              imageUrl: '',
+              analysis: 'Invalid birth date format.',
+              shortAnalysis: '날짜 형식 오류',
+              recommendations: [],
+              budget: '',
+              transport: '',
+              tip: '',
+              popularity: '',
+            });
+            setIsBiorhythmLoading(false);
+            return;
+          }
           const today = new Date();
           const biorhythm = calculateBiorhythm(birth, today);
           // API 호출
@@ -534,7 +693,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
             }),
             headers: { 'Content-Type': 'application/json' }
           });
-          const data = await res.json();
+          await res.json();
           const result = await getRecommendedDestination({
             birthDate: birthDate,
             quizAnswers: [],
@@ -545,13 +704,13 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
           });
           //console.log('[recommendedDestination 전체]', result);
           setRecommendedDestination(result);
-        } catch (error) {
+        } catch {
           setRecommendedDestination({
             personaTitle: '',
             destinationName: '',
             imageUrl: '',
-            analysis: 'Failed to get AI interpretation.',
-            shortAnalysis: 'Summary failed',
+            analysis: 'AI 해석을 가져오는 데 실패했습니다.',
+            shortAnalysis: '요약 실패',
             recommendations: [],
             budget: '',
             transport: '',
@@ -566,14 +725,7 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     fetchBiorhythmAnalysis();
   }, [stage, birthDate]);
 
-  useEffect(() => {
-    if (stage === 'biorhythm' && !isBiorhythmLoading && recommendedDestination) {
-      setShowBiorhythmContent(false);
-      setTimeout(() => setShowBiorhythmContent(true), 350); // 카드 리사이징 duration과 맞춤
-    } else if (stage !== 'biorhythm') {
-      setShowBiorhythmContent(false);
-    }
-  }, [stage, isBiorhythmLoading, recommendedDestination]);
+
 
   // - 각 단계별 콘솔 출력 및 관리자 이미지/타이틀 불러오기
   useEffect(() => {
@@ -592,24 +744,32 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
     if (stage in stageNames) {
       //console.log(`[STAGE] ${stage}: ${stageNames[stage]}`);
     }
-    // 이메일 입력 진입 시 관리자 이미지/타이틀 불러오기
+    // 이메일 입력 진입 시 관리자 이미지/타이틀 불러오기 (매번 새로 fetch)
     if (stage === 'email') {
+      // 이전 상태 초기화
+      setAdminImageUrl(null);
+      setAdminTitle(null);
+      
       fetchAdminSettings()
         .then(data => {
+          //console.log('[Admin Settings] 새로 받은 데이터:', data);
+          //console.log('[Admin Settings] imageUrl:', data?.imageUrl);
+          //console.log('[Admin Settings] title:', data?.title);
+          if (data._debug) {
+            //console.log('[Admin Settings] 서버 디버그 정보:', data._debug);
+          }
           setAdminImageUrl(data?.imageUrl || null);
           setAdminTitle(data?.title || null);
         })
         .catch(() => {
+          //console.error('[Admin Settings] 불러오기 실패:', error);
           setAdminImageUrl(null);
           setAdminTitle(null);
         });
     }
   }, [stage, currentStep, questions]);
 
-  // cardWidth useEffect로 관리
-  useEffect(() => {
-    setCardWidth(stage === 'biorhythm' && isBiorhythmLoading ? 360 : 650);
-  }, [stage, isBiorhythmLoading]);
+
 
   // ====== 렌더링 영역 ======
   // 컨텐츠 사이즈 조절
@@ -652,20 +812,21 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
                 persona={{
                   personaName: resultData.personaName || resultData.ai_result?.personaName || resultData.ai_result?.personaTitle || 'No information',
                   description: resultData.description || resultData.ai_result?.analysis || 'No information',
-                  destination: resultData.destination || resultData.ai_result?.destinationName || 'No information',
-                  imageUrl: resultData.imageUrl || resultData.ai_result?.imageUrl || '',
+                  destination: resultData.destination || resultData.recommended_destination || resultData.ai_result?.destinationName || 'No information',
+                  imageUrl: resultData.imageUrl || resultData.image_url || resultData.ai_result?.imageUrl || '',
                   recommendations: resultData.recommendations || resultData.ai_result?.recommendations || [],
                   budget: resultData.budget || resultData.ai_result?.budget || '',
                   transport: resultData.transport || resultData.ai_result?.transport || '',
                   tip: resultData.tip || resultData.ai_result?.tip || '',
-                  likes: resultData.likes,
-                  id: '',
-                  email: '',
-                  birth_date: '',
+                  likes: resultData.likes || 0,
+                  id: (currentSessionId === mySessionId) ? (mySessionId || '') : (resultData.id || ''),
+                  email: (currentSessionId === mySessionId) ? email : (resultData.email || ''),
+                  birth_date: (currentSessionId === mySessionId) ? birthDate : (resultData.birth_date || ''),
                 }}
                 isMine={currentSessionId === mySessionId}
                 mySessionId={mySessionId || undefined}
                 onReset={handleResetOrMyResult}
+                onGoToMyResult={handleGoToMyResult}
               >
                 <div>
                   <p className="text-center text-muted-foreground mb-4">Recommended keywords from other travelers</p>
@@ -723,14 +884,14 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
                       isPending={isPending}
                       onDateSelect={date => {
                         if (date) {
-                          setBirthDate(format(date, 'yyyy-MM-dd'));
+                          setBirthDate(format(date, 'MM/dd/yyyy'));
                           setDateError(null);
                         }
                       }}
                     />
-                  ) : stage === 'biorhythm' && birthDate && !dateError && isValid(new Date(birthDate)) ? (
+                  ) : stage === 'biorhythm' && birthDate && !dateError && parseUSDateString(birthDate) ? (
                     <BiorhythmDisplay
-                      birthDate={new Date(birthDate)}
+                      birthDate={parseUSDateString(birthDate)!}
                       onStartQuiz={() => { handleStartQuiz(); }}
                       analysis={recommendedDestination?.analysis ?? null}
                       isLoading={isBiorhythmLoading}
@@ -753,38 +914,42 @@ export function WanderPersonaApp({ initialSessionId }: { initialSessionId?: stri
                       </div>
                       <div className="w-full mt-4 rounded-lg shadow-lg flex justify-center items-center">
                         {(() => {
-                          const imageUrl = adminImageUrl || recommendedDestination?.imageUrl;
-                          const imageAlt = adminTitle || recommendedDestination?.destinationName || '';
-                          if (!imageUrl) {
+                          // 서버에서 관리자 이미지만 사용 (기본 이미지 제외)
+                          const imageAlt = adminTitle || '';
+                          
+                          if (!imageUrlWithCache) {
                             return null;
                           }
+                          
                           return (
-                            <>
+                            <div className="relative max-w-[450px] w-full rounded-lg overflow-hidden">
                               {!imgLoaded && (
-                               // <div className="absolute inset-0 flex items-center justify-center bg-background/100 z-10">
+                                <div className="absolute inset-0 flex items-center justify-center bg-background/70 z-10 rounded-lg" style={{ minHeight: '300px' }}>
                                   <LoadingSpinner title="" description="" />
-                              //  </div>
+                                </div>
                               )}
                               <Image
-                                key={imageUrl}
-                                src={imageUrl}
+                                key={imageUrlWithCache}
+                                src={imageUrlWithCache}
                                 alt={imageAlt}
                                 width={450}
                                 height={imgNaturalHeight || 300}
                                 style={{
-                                  objectFit: 'cover',
                                   opacity: imgLoaded ? 1 : 0,
                                   transition: 'opacity 0.7s',
-                                  width: 450,
+                                  width: '100%',
                                   height: 'auto',
+                                  maxWidth: '450px',
+                                  maxHeight: '500px',
                                   borderRadius: 16,
                                   display: 'block',
                                 }}
                                 data-ai-hint="travel destination"
                                 onLoad={handleImageLoad}
                                 priority
+                                unoptimized
                               />
-                            </>
+                            </div>
                           );
                         })()}
                       </div>

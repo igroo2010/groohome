@@ -4,8 +4,31 @@ import { motion } from 'framer-motion';
 import { ResultCard } from '@/components/result-card';
 import { LoadingSpinner } from '@/components/loading-spinner';
 
+interface SessionData {
+  id: string;
+  ai_result: {
+    personaTitle?: string;
+    analysis?: string;
+    recommendations?: Array<{
+      type: string;
+      name: string;
+      address: string;
+      description?: string;
+      preferenceScore?: number;
+    }>;
+    budget?: string;
+    transport?: string;
+    tip?: string;
+  };
+  image_url?: string;
+  recommended_destination?: string;
+  likes?: number;
+  email?: string;
+  birth_date?: string;
+}
+
 export default function ResultDetail({ id }: { id: string }) {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +46,7 @@ export default function ResultDetail({ id }: { id: string }) {
         }
         setLoading(false);
       })
-      .catch((e) => {
+      .catch(() => {
         setError('네트워크 오류 또는 서버 에러');
         setLoading(false);
       });

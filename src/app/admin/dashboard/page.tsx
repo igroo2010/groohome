@@ -1,14 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { v4 as uuidv4 } from 'uuid';
 import { useRouter } from 'next/navigation';
 import ClientOnly from '@/components/ClientOnly';
 
@@ -23,25 +18,22 @@ type ResultSessionRow = {
   created_at: string;
 };
 
-interface SessionRow {
+type TravelDestinationUpsert = {
   id: string;
-  email: string;
-  birth_date: string;
-  ai_result: { destination?: string } | null;
-  likes: number;
-  created_at: string;
-}
+  title?: string;
+  imageUrl?: string;
+};
+
+
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [resultSessions, setResultSessions] = useState<ResultSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [itemId] = useState('585881f1-4065-4b11-812c-745800cee069');
 
   useEffect(() => {
@@ -54,7 +46,7 @@ export default function AdminDashboard() {
     fetchResultSessions();
     // title, imageUrl 불러오기
     const fetchTitleAndImage = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('travel_destination')
         .select('title, imageUrl')
         .eq('id', itemId)
@@ -69,17 +61,16 @@ export default function AdminDashboard() {
 
   const fetchResultSessions = async () => {
     setLoading(true);
-    setError('');
     const { data, error } = await supabase
       .from('result_sessions')
       .select('id, email, birth_date, ai_result, recommended_destination, location, likes, created_at')
       .order('created_at', { ascending: false });
     if (error) {
-      setError('세션 데이터를 불러오는 데 실패했습니다.');
+      console.error('세션 데이터 불러오기 실패:', error);
       setResultSessions([]);
     } else {
       setResultSessions(
-        (data as any[]).map(row => ({
+        (data as ResultSessionRow[]).map(row => ({
           ...row,
           ai_result: row.ai_result || {},
           recommended_destination: row.recommended_destination || '-',
@@ -115,9 +106,8 @@ export default function AdminDashboard() {
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
 
-    const { data: { user } } = await supabase.auth.getUser();
-  //console.log('user 전체:', user);
-  //console.log('업로드 시도 userId:', user?.id);
+    // 사용자 인증 확인
+    await supabase.auth.getUser();
 
     const formData = new FormData();
     formData.append('file', selectedFile);
@@ -129,7 +119,7 @@ export default function AdminDashboard() {
     let data;
     try {
       data = await response.json();
-    } catch (e) {
+    } catch {
       data = { error: '서버에서 올바른 JSON을 반환하지 않았습니다.' };
     }
     if (response.ok && data.imageUrl) {
@@ -149,15 +139,20 @@ export default function AdminDashboard() {
       alert('타이틀 또는 이미지를 입력/업로드하세요.');
       return;
     }
-    const upsertData: any = { id: itemId };
+    const upsertData: TravelDestinationUpsert = { id: itemId };
     if (title) upsertData.title = title;
     if (imageUrl) upsertData.imageUrl = imageUrl;
+    
+    console.log('[Admin Save] 저장할 데이터:', upsertData);
+    
     const { error } = await supabase
       .from('travel_destination')
       .upsert([upsertData]);
     if (error) {
+      console.error('[Admin Save] 저장 실패:', error);
       alert('저장 실패: ' + error.message);
     } else {
+      console.log('[Admin Save] 저장 성공!');
       alert('저장되었습니다.');
       // 저장 후 최신값 다시 불러오기
       const { data } = await supabase
@@ -165,6 +160,7 @@ export default function AdminDashboard() {
         .select('title, imageUrl')
         .eq('id', itemId)
         .single();
+      console.log('[Admin Save] 저장 후 조회 결과:', data);
       if (data) {
         setTitle(data.title || '');
         setImageUrl(data.imageUrl || '');
@@ -211,8 +207,8 @@ export default function AdminDashboard() {
             <h2 className="text-xl font-semibold mb-4">세션/이용자 리스트</h2>
             {loading ? (
               <div className="text-center text-gray-500 py-8">불러오는 중...</div>
-            ) : error ? (
-              <div className="text-center text-red-500 py-8">{error}</div>
+            ) : resultSessions.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">데이터가 없습니다.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm border">
@@ -236,7 +232,15 @@ export default function AdminDashboard() {
                         <td className="px-3 py-2 border text-center">{resultSession.location || '-'}</td>
                         <td className="px-3 py-2 border text-center">{resultSession.likes}</td>
                         <td className="px-3 py-2 border text-center">{resultSession.created_at.slice(0, 10)}</td>
-                        <td className="px-3 py-2 border text-center text-blue-600 cursor-pointer">보기</td>
+                        <td className="px-3 py-2 border text-center">
+                          <button
+                            className="text-blue-600 hover:text-blue-800 hover:underline px-2 py-1 rounded transition-colors"
+                            onClick={() => window.open(`/result/${resultSession.id}`, '_blank')}
+                            title={`${resultSession.email}의 결과 보기`}
+                          >
+                            보기
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

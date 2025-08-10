@@ -22,7 +22,7 @@ export function BiorhythmDisplay({ birthDate, onStartQuiz, analysis, isLoading }
       <div className="text-center">
         <h2 className="text-3xl font-bold font-headline">Your Biorhythm</h2>
         <p className="text-muted-foreground mt-2 mb-6">
-          Based on selected birthdate {format(birthDate, 'yyyy-MM-dd')}
+          Based on selected birthdate {format(birthDate, 'MM/dd/yyyy')}
         </p>
       </div>
 
@@ -32,7 +32,7 @@ export function BiorhythmDisplay({ birthDate, onStartQuiz, analysis, isLoading }
         <Card className="bg-background/70 w-full">
           <CardHeader>
             <CardTitle>AI Biorhythm Analysis</CardTitle>
-            <CardDescription>This is advice based on today's rhythm.</CardDescription>
+            <CardDescription>AI-powered insights based on your current biorhythm patterns.</CardDescription>
           </CardHeader>
           <CardContent className="p-0 text-left pl-6" style={{ width: 650 }}>
             <motion.div
@@ -75,7 +75,7 @@ export function BiorhythmDisplay({ birthDate, onStartQuiz, analysis, isLoading }
       <div className="mt-8 flex justify-center">
         <Button onClick={onStartQuiz} size="lg" className="rounded-full px-10 py-6 text-lg" disabled={isLoading}>
           <Rocket className="mr-3 h-6 w-6" />
-          Find Myself
+Discover My Travel Style
         </Button>
       </div>
     </div>

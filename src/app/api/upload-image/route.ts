@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   //console.log('filePath:', filePath);
   //console.log('file:', file);
 
-  const { data, error: uploadError } = await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from('travel-images')
     .upload(filePath, file, { upsert: true });
 

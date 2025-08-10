@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ai } from '@/ai/genkit';
 import { getAdminSettings } from '@/lib/adminSettingsCache';
 
+interface AIModelOptions {
+  model: string;
+  prompt: { text: string };
+  config: {
+    responseModalities: string[];
+    apiKey?: string;
+  };
+}
+
 async function callAIModel({ prompt, model, apiKey }: { prompt: string; model?: string; apiKey?: string }) {
   try {
-    const options: any = {
+    const options: AIModelOptions = {
       model: model || 'googleai/gemini-2.0-flash',
       prompt: { text: prompt },
       config: { responseModalities: ['TEXT'] },
@@ -13,7 +22,7 @@ async function callAIModel({ prompt, model, apiKey }: { prompt: string; model?: 
       options.config.apiKey = apiKey;
     }
     const result = await ai.generate(options);
-    let text = null;
+    let text: string | null = null;
     if (typeof result.text === 'string') {
       text = result.text;
     } else if (result?.output?.text) {
@@ -22,7 +31,7 @@ async function callAIModel({ prompt, model, apiKey }: { prompt: string; model?: 
       text = result.output.content;
     }
     return text ? text.trim() : null;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -47,8 +56,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(FALLBACK_RESPONSE, { status: 200 });
     }
     return NextResponse.json({ interpretation: aiResult, shortInterpretation: shortResult }, { status: 200 });
-  } catch (error) {
-    // console.error(error); // 실제 운영 시 에러 로그를 남기는 것이 좋습니다.
+  } catch {
+    // 에러 발생 시 fallback 응답 반환
     return NextResponse.json(FALLBACK_RESPONSE, { status: 200 });
   }
 } 

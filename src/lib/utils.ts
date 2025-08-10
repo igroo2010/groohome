@@ -13,7 +13,13 @@ export function getToday(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function isLikedToday(likedIps: any[], ip: string, userId?: string): boolean {
+type LikedItem = {
+  ip?: string;
+  user_id?: string;
+  date: string;
+};
+
+export function isLikedToday(likedIps: LikedItem[], ip: string, userId?: string): boolean {
   const today = getToday();
   if (userId) {
     return likedIps.some(item => item.user_id === userId && item.date === today);

@@ -18,7 +18,13 @@ export function BiorhythmChart({ birthDate }: BiorhythmChartProps) {
       return [];
     }
     const today = new Date();
-    const data = [];
+    const data: Array<{
+      date: string;
+      'Physical': number;
+      'Emotional': number;
+      'Intellectual': number;
+      'Intuitive': number;
+    }> = [];
     for (let i = -14; i <= 14; i++) {
       const date = addDays(today, i);
       const rhythms = calculateBiorhythm(birthDate, date);
@@ -27,7 +33,7 @@ export function BiorhythmChart({ birthDate }: BiorhythmChartProps) {
         'Physical': rhythms.physical,
         'Emotional': rhythms.emotional,
         'Intellectual': rhythms.intellectual,
-        'Perceptual': rhythms.perceptual,
+        'Intuitive': rhythms.perceptual,
       });
     }
   //console.log('[BiorhythmChart] chartData:', data);
@@ -70,7 +76,7 @@ export function BiorhythmChart({ birthDate }: BiorhythmChartProps) {
           <Line type="monotone" dataKey="Physical" stroke="hsl(var(--chart-1))" dot={false} strokeWidth={2.5} />
           <Line type="monotone" dataKey="Emotional" stroke="hsl(var(--chart-2))" dot={false} strokeWidth={2.5} />
           <Line type="monotone" dataKey="Intellectual" stroke="hsl(var(--chart-3))" dot={false} strokeWidth={2.5} />
-          <Line type="monotone" dataKey="Perceptual" stroke="hsl(var(--chart-4))" dot={false} strokeWidth={2.5} />
+          <Line type="monotone" dataKey="Intuitive" stroke="hsl(var(--chart-4))" dot={false} strokeWidth={2.5} />
         </LineChart>
       </ResponsiveContainer>
     </motion.div>

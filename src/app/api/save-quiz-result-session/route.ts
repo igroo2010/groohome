@@ -9,27 +9,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY! // Service Role Key 사용
 );
 
-async function uploadExternalImageToStorage(imageUrl: string, fileName: string) {
-  // 1. 외부 이미지 다운로드
-  const response = await fetch(imageUrl);
-  if (!response.ok) throw new Error('이미지 다운로드 실패');
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  // 2. Storage 업로드 (중복 방지: upsert)
-  const { data, error } = await supabase.storage
-    .from('result-images')
-    .upload(`ai/${fileName}`, buffer, { contentType: 'image/png', upsert: true });
-
-  if (error) throw new Error('Storage 업로드 실패: ' + error.message);
-
-  // 3. public URL 획득
-  const { data: urlData } = supabase.storage
-    .from('result-images')
-    .getPublicUrl(`ai/${fileName}`);
-
-  return urlData.publicUrl;
-}
+// async function uploadExternalImageToStorage(imageUrl: string, fileName: string) {
+//   // 1. 외부 이미지 다운로드
+//   const response = await fetch(imageUrl);
+//   if (!response.ok) throw new Error('이미지 다운로드 실패');
+//   const arrayBuffer = await response.arrayBuffer();
+//   const buffer = Buffer.from(arrayBuffer);
+// 
+//   // 2. Storage 업로드 (중복 방지: upsert)
+//   const { data, error } = await supabase.storage
+//     .from('result-images')
+//     .upload(`ai/${fileName}`, buffer, { contentType: 'image/png', upsert: true });
+// 
+//   if (error) throw new Error('Storage 업로드 실패: ' + error.message);
+// 
+//   // 3. public URL 획득
+//   const { data: urlData } = supabase.storage
+//     .from('result-images')
+//     .getPublicUrl(`ai/${fileName}`);
+// 
+//   return urlData.publicUrl;
+// }
 
 export async function POST(req: NextRequest) {
   try {
@@ -56,13 +56,13 @@ export async function POST(req: NextRequest) {
         //  console.log('arrayBuffer 길이:', arrayBuffer.byteLength);
           const buffer = Buffer.from(arrayBuffer);
         //  console.log('Buffer 변환 완료, 업로드 시도');
-          const { data, error } = await supabase.storage
+          const { error } = await supabase.storage
             .from('result-images')
             .upload(`ai/${fileName}`, buffer, { contentType: 'image/png', upsert: true });
           if (error) {
             console.error('Storage 업로드 실패:', error);
           } else {
-            console.log('Storage 업로드 성공:', data);
+            // console.log('Storage 업로드 성공');
             // 3. public URL 획득
             const { data: urlData } = supabase.storage
               .from('result-images')
@@ -80,13 +80,13 @@ export async function POST(req: NextRequest) {
           const fileName = `${uuidv4()}.png`;
           const base64Data = image_url.split(',')[1];
           const buffer = Buffer.from(base64Data, 'base64');
-          const { data, error } = await supabase.storage
+          const { error } = await supabase.storage
             .from('result-images')
             .upload(`ai/${fileName}`, buffer, { contentType: 'image/png', upsert: true });
           if (error) {
             console.error('base64 Storage 업로드 실패:', error);
           } else {
-         //   console.log('base64 Storage 업로드 성공:', data);
+         //   console.log('base64 Storage 업로드 성공');
             const { data: urlData } = supabase.storage
               .from('result-images')
               .getPublicUrl(`ai/${fileName}`);
@@ -99,13 +99,15 @@ export async function POST(req: NextRequest) {
     }
 
     // ai_result에서 destinationName(여행지명)만 recommended_destination에 저장
-    let recommendedDestination = null;
+    let recommendedDestination: string | null = null;
     if (ai_result) {
       let parsed = ai_result;
       if (typeof ai_result === 'string') {
         try {
           parsed = JSON.parse(ai_result);
-        } catch {}
+        } catch (error) {
+          console.error('JSON 파싱 실패:', error);
+        }
       }
       if (parsed.destinationName) {
         recommendedDestination = parsed.destinationName;
@@ -115,7 +117,7 @@ export async function POST(req: NextRequest) {
       }
     }
     // recommendedDestination이 없으면 'unknown'으로 저장 (이제는 위에서 에러 반환하므로 이 줄은 사실상 의미 없음)
-    if (!recommendedDestination) recommendedDestination = 'unknown';
+    if (!recommendedDestination) recommendedDestination = 'unknown' as string;
 
     const insertPayload = {
       id: uuidv4(),
@@ -137,7 +139,7 @@ export async function POST(req: NextRequest) {
       console.error('Supabase Insert Error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, sessionId: insertPayload.id, image_url });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }

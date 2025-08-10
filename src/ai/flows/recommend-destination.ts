@@ -11,6 +11,18 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { getAdminSettings } from '@/lib/adminSettingsCache';
 
+// 이미지 생성 결과 타입 정의
+interface ImageGenerationResult {
+  url?: string;
+  buffer?: Buffer;
+}
+
+// AI 에러 타입 정의
+interface AIError {
+  status?: number;
+  message?: string;
+}
+
 const RecommendDestinationInputSchema = z.object({
   birthDate: z.string().describe('사용자의 생년월일 (ISO 8601 형식).'),
   quizAnswers: z.array(z.string()).describe('사용자의 퀴즈 답변 목록'),
@@ -53,17 +65,18 @@ export type RecommendDestinationOutput = z.infer<
  * @param prompt 이미지 생성을 위한 텍스트 프롬프트
  * @returns 생성된 이미지 (URL 또는 Buffer) 또는 실패 시 null
  */
-async function generateImageWithPrompt(model: string, prompt: string): Promise<any | null> {
+async function generateImageWithPrompt(model: string, prompt: string): Promise<ImageGenerationResult | null> {
   try {
     const result = await ai.generate({
       model,
       prompt: { text: prompt },
       config: { responseModalities: ["TEXT", "IMAGE"] },
     });
-    return result.media;
-  } catch (error: any) {
-    console.error(`[ERROR] Image generation failed for model ${model}:`, error);
-    if (error.status === 400) {
+    return result.media as ImageGenerationResult;
+  } catch (error: unknown) {
+    const aiError = error as AIError;
+    console.error(`[ERROR] Image generation failed for model ${model}:`, aiError);
+    if (aiError.status === 400) {
       console.error("잘못된 모달리티 조합입니다. TEXT와 IMAGE를 요청했는지 확인하세요.");
     }
     return null;
@@ -71,12 +84,15 @@ async function generateImageWithPrompt(model: string, prompt: string): Promise<a
 }
 
 // 항공권 가격 조회 스텁 함수 (실제 API 연동 필요)
+// 현재 사용하지 않으므로 주석 처리
+/*
 async function getFlightPrice(fromIp: string, to: string): Promise<number> {
   // 실제 구현 시 Skyscanner, Kayak 등 API 연동 필요
   // fromIp로 출발지 추정, to는 도착 도시/국가명
-  // 예시: $1500 USD
-  return 1500;
+  // 예시: 1500000 (원화)
+  return 1500000;
 }
+*/
 
 const destinationPrompt = ai.definePrompt({
   name: 'destinationPrompt',
@@ -156,9 +172,9 @@ The following are the user's biorhythm values, travel tendencies (quiz answers),
    - Example: "Hotel Savoy"
    Each item should include type (one of 'accommodation', 'restaurant', 'attraction'), name, description (English, within 30 characters), address (actual address, within 50 characters), and preferenceScore (a float between 0 and 1, where higher means more strongly recommended for the user. Example: 0.92).
 6. budget: Write the actual cost of living and travel expenses for personaName + destinationName. Each item (accommodation, food, activities, transportation, etc.) should be written on a new line. 
-All amounts must be in USD (e.g., $50 USD), do not use other currencies (yen, won, euro, etc.).
-Each item should have a realistic range (e.g., accommodation $80~$300 USD, food $20~$100 USD, activities $10~$100 USD, etc.), and there should be enough variation between items. For "Other", only include additional costs that may actually occur during travel (e.g., souvenirs, snacks, local transportation, etc.). Do not include unnecessary explanations, strange items, or AI notices. Example: Other: $10 USD (e.g., souvenirs, snacks, local transportation, etc.)
-On the last line, write 'Total per night: $total amount USD'.
+All amounts must be in USD (e.g., $50), do not use other currencies (yen, KRW, euro, etc.).
+Each item should have a realistic range (e.g., accommodation $80~300, food $20~100, activities $10~100, etc.), and there should be enough variation between items. For "Other", only include additional costs that may actually occur during travel (e.g., souvenirs, snacks, local transportation, etc.). Do not include unnecessary explanations, strange items, or AI notices. Example: Other: $10 (e.g., souvenirs, snacks, local transportation, etc.)
+On the last line, write 'Total per night: total amount (USD)'.
 7. transport: Only include actual transportation, time, and price for personaName + destinationName. In English, write one line for 'Flight', one for 'Local'.
 8. tip: Only include actually useful travel tips for personaName + destinationName. In English, write 3–4 items, each 20–50 characters, on a new line. Example: 'The sun is strong, so be sure to bring sunscreen SPF50 or higher.'
 9. imagePrompt: In English, provide a highly artistic, emotional, and visually stunning photo of the recommended destination, as if taken by a professional local photographer. The image should be high-resolution, realistic, and capture the unique atmosphere and beauty of the place. Avoid illustrations or cartoons. Use a cinematic, travel magazine style. No people, no text, no watermark, no logo, no cartoon, no illustration, no drawing, no painting, no animation, no emoji.
@@ -196,14 +212,17 @@ const recommendDestinationFlow = ai.defineFlow(
     inputSchema: RecommendDestinationInputSchema,
     outputSchema: RecommendDestinationOutputSchema,
   },
-  async ({ birthDate, quizAnswers, physical, emotional, intellectual, perceptual, ip }: RecommendDestinationInput) => {
-    const dob = new Date(birthDate);
-    const rhythms = { physical, emotional, intellectual, perceptual };
+  async ({ quizAnswers, physical, emotional, intellectual, perceptual }: RecommendDestinationInput) => {
+    // 사용하지 않는 변수들 제거
+    // const dob = new Date(birthDate);
+    // const rhythms = { physical, emotional, intellectual, perceptual };
 
     // .env에서 AI Key/모델 정보 읽기
     const aiSettings = await getAdminSettings();
     if (!aiSettings) throw new Error('AI 설정 정보를 불러올 수 없습니다.');
-    const { text_model, text_model_apikey, image_model, image_model_apikey } = aiSettings;
+    const { text_model, text_model_apikey, image_model } = aiSettings;
+    // 사용하지 않는 변수 제거
+    // const { image_model_apikey } = aiSettings;
 
     // 1회 프롬프트 호출
     let destinationDetails;
@@ -228,21 +247,22 @@ const recommendDestinationFlow = ai.defineFlow(
       );
       destinationDetails = output;
       if (Array.isArray(destinationDetails.recommendations)) {
-        destinationDetails.recommendations = destinationDetails.recommendations.map((rec: { [key: string]: any }) => ({
+        destinationDetails.recommendations = destinationDetails.recommendations.map((rec: Record<string, unknown>) => ({
           ...rec,
-          description: rec.description || '설명 없음',
+          description: (rec.description as string) || '설명 없음',
         }));
       }
       //console.log('destinationName:', destinationDetails.destinationName);
-    } catch (e) {
-      throw new Error('destinationPrompt 호출 실패: ' + (e instanceof Error ? e.message : e));
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error('destinationPrompt 호출 실패: ' + errorMessage);
     }
     if (!destinationDetails) {
       throw new Error('Failed to get destination details from LLM.');
     }
 
     // 항공권 가격 조회
-    /*let flightPrice = 1500;
+    /*let flightPrice = 1500000;
     if (ip && destinationDetails.destinationName) {
       flightPrice = await getFlightPrice(ip, destinationDetails.destinationName);
     }*/
@@ -251,7 +271,7 @@ const recommendDestinationFlow = ai.defineFlow(
     let media;
     try {
       media = await generateImageWithPrompt(image_model, destinationDetails.imagePrompt);
-    } catch (e) {
+    } catch {
       media = { url: '/default-image.png' };
     }
     if (!media || !media.url) {
@@ -259,7 +279,7 @@ const recommendDestinationFlow = ai.defineFlow(
     }
 
     // 여행 경비 문자열 생성 (항공권 가격 반영)
-    //const budget = `Flight: $${flightPrice} USD\n${destinationDetails.budget.replace(/^Flight:[^\n]*\n?/, '')}`;
+    //const budget = `항공: ${flightPrice.toLocaleString()}원\n${destinationDetails.budget.replace(/^항공:[^\n]*\n?/, '')}`;
     const result = {
       personaTitle: destinationDetails.personaTitle,
       destinationName: destinationDetails.destinationName,

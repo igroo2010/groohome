@@ -6,9 +6,6 @@ import {
   Heart,
   Link,
   MapPin,
-  Home,
-  Utensils,
-  Landmark,
   Repeat,
   DollarSign,
   TrainFront,
@@ -20,7 +17,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from './ui/separator';
 import { format } from 'date-fns';
-import { useRouter } from 'next/navigation';
 
 
 
@@ -28,7 +24,7 @@ type Recommendation = {
   type: string;
   name: string;
   address: string;
-  description: string;
+  description?: string;
   preferenceScore?: number;
 };
 
@@ -50,6 +46,7 @@ type ResultCardProps = {
   onReset: () => void;
   isMine?: boolean;
   mySessionId?: string;
+  onGoToMyResult?: () => void;
   children?: React.ReactNode;
 };
 
@@ -60,69 +57,78 @@ function splitLines(text: string) {
   return text.split(/(?=숙박:|식비:|액티비티:|총 1박 기준:|비행:|시내:)/g);
 }
 
-// USD 예산 표시 컴포넌트
-function BudgetDisplay({ budget }: { budget: string }) {
+
+
+// budget 정보 표시
+function BudgetWithExchange({ budget }: { budget: string }) {
   return (
     <div>
-      {budget.split('\n').map((line: string, idx: number) => {
-        // (AI) 문구가 있으면 제거
-        if (line.endsWith(' (AI)')) {
-          return <div key={idx}>{line.replace(' (AI)', '')}</div>;
-        }
-        return <div key={idx}>{line}</div>;
-      })}
+      {budget.split('\n').map((line: string, idx: number) => (
+        <div key={idx}>{line}</div>
+      ))}
     </div>
   );
 }
 
 
 
-export function ResultCard({ persona, onReset, isMine = false, mySessionId, children }: ResultCardProps) {
+export function ResultCard({ persona, onReset, isMine = false, mySessionId, onGoToMyResult, children }: ResultCardProps) {
   const [activeAddress, setActiveAddress] = useState<number | null>(null);
   const [hasLiked, setHasLiked] = useState(false); // 오늘 좋아요 여부
   const [isLiking, setIsLiking] = useState(false); // 로딩 상태
   const [likeCount, setLikeCount] = useState(persona.likes || 0); // 좋아요 수(추가)
   const { toast } = useToast();
-  const router = useRouter();
 
   // 오늘 날짜 key 생성
   const today = format(new Date(), 'yyyy-MM-dd');
   const likeKey = `like-${persona.destination}-${today}`;
 
+  // persona.likes 값이 변경될 때 카운터 초기화
+  useEffect(() => {
+    setLikeCount(persona.likes || 0);
+  }, [persona.likes]);
+
   // 초기 렌더링: 로컬스토리지 우선 적용, 서버 동기화 후 덮어쓰기
   useEffect(() => {
     let ignore = false;
     let toastShown = false;
-    // 1. 로컬스토리지 우선 적용
+    
+    // 로컬스토리지 우선 적용
     const localLiked = typeof window !== 'undefined' ? localStorage.getItem(likeKey) === 'true' : false;
     setHasLiked(localLiked);
+    
     async function checkAlreadyLiked() {
       try {
-        const res = await fetch(`/api/like-destination?destination=${encodeURIComponent(persona.destination)}`);
+        // sessionId가 있으면 추가로 전달
+        const url = persona.id 
+          ? `/api/like-destination?destination=${encodeURIComponent(persona.destination)}&sessionId=${persona.id}`
+          : `/api/like-destination?destination=${encodeURIComponent(persona.destination)}`;
+        
+        const res = await fetch(url);
         if (!res.ok) throw new Error('서버 오류');
         const data = await res.json();
         if (!ignore) {
           setHasLiked(!!data.alreadyLiked);
-          setLikeCount(typeof data.likes === 'number' ? data.likes : (persona.likes || 0));
+          // 서버에서 받은 좋아요 수가 있고, persona.likes와 다른 경우에만 업데이트
+          if (typeof data.likes === 'number' && data.likes !== (persona.likes || 0)) {
+            setLikeCount(data.likes);
+          }
           // 서버값이 true면 로컬스토리지에도 true 저장, 아니면 삭제
           if (typeof window !== 'undefined') {
             if (data.alreadyLiked) localStorage.setItem(likeKey, 'true');
             else localStorage.removeItem(likeKey);
           }
         }
-      } catch (e) {
+      } catch {
         if (!ignore && !toastShown) {
-          toast({ title: '상태 동기화 실패', description: '좋아요 상태를 불러오지 못했습니다.', variant: 'destructive' });
           toastShown = true;
         }
       }
     }
+    
     checkAlreadyLiked();
-    setLikeCount(persona.likes || 0);
     return () => { ignore = true; };
-  }, [persona.destination]);
-
-
+  }, [persona.destination, persona.likes, persona.id, likeKey, toast]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href).then(
@@ -158,6 +164,7 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
           id: persona.id,
           email: persona.email,
           birth_date: persona.birth_date,
+          sessionId: persona.id, // sessionId 추가
         }),
       });
       const data = await response.json();
@@ -177,7 +184,7 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
         if (typeof window !== 'undefined') localStorage.removeItem(likeKey);
         toast({ title: '좋아요 실패', description: data.error || '좋아요 처리 중 오류가 발생했습니다.', variant: 'destructive' });
       }
-    } catch (error) {
+    } catch {
       setHasLiked(false);
       setLikeCount(prev => Math.max(prev - 1, 0));
       if (typeof window !== 'undefined') localStorage.removeItem(likeKey);
@@ -186,7 +193,6 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
       setIsLiking(false);
     }
   };
-
 
 
 
@@ -223,7 +229,7 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
         <Separator className="my-8" />
         <div>
           <h3 className="text-center text-2xl font-bold mb-6 font-headline">
-            '{persona.destination}' Recommended Courses
+            &apos;{persona.destination}&apos; Recommended Courses
           </h3>
           <div className="space-y-2">
             {Array.isArray(persona.recommendations) && persona.recommendations.length > 0 ? (
@@ -272,7 +278,7 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
             <div>
               <h4 className="font-bold">Travel Budget</h4>
               <div className="text-muted-foreground text-sm mt-1">
-                {persona.budget ? <BudgetDisplay budget={persona.budget} /> : <span>No information</span>}
+                {persona.budget ? <BudgetWithExchange budget={persona.budget} /> : <span>No information</span>}
               </div>
             </div>
           </div>
@@ -326,18 +332,31 @@ export function ResultCard({ persona, onReset, isMine = false, mySessionId, chil
         
         {children}
         <div className="mt-10 flex justify-center">
-          <Button onClick={() => {
-            if (isMine) {
-              onReset(); // 메인으로
-            } else if (mySessionId) {
-              router.push(`/result/${mySessionId}`); // 내 결과로
-            } else {
-              onReset();
-            }
-          }} variant="default" size="lg" className="rounded-full">
-            <Repeat className="mr-2 h-5 w-5" />
-            Start Again
-          </Button>
+          {isMine ? (
+            // 내 결과일 때: 처음부터 다시
+            <Button onClick={() => onReset()} variant="default" size="lg" className="rounded-full">
+              <Repeat className="mr-2 h-5 w-5" />
+              Start Again
+            </Button>
+          ) : (
+            // 다른 사람 결과일 때: 두 개 버튼
+            <div className="flex gap-4">
+              <Button onClick={() => onReset()} variant="default" size="lg" className="rounded-full">
+                <Repeat className="mr-2 h-5 w-5" />
+                Start Again
+              </Button>
+              {mySessionId && onGoToMyResult && (
+                <Button 
+                  onClick={onGoToMyResult} 
+                  variant="outline" 
+                  size="lg" 
+                  className="rounded-full"
+                >
+                  My Result
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
