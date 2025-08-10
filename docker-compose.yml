@@ -14,3 +14,4 @@ services:
     ports:
       - "3000:3000"
     restart: unless-stopped
+    network_mode: "host"  # 호스트 네트워크 사용으로 외부 API 접근 가능
